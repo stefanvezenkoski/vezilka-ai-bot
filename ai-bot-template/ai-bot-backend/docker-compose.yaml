@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:17.4
+    restart: always
+    environment:
+      POSTGRES_USER: emc
+      POSTGRES_PASSWORD: emc
+      POSTGRES_DB: aibot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+volumes:
+  pgdata:
