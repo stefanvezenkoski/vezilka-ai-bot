@@ -44,6 +44,10 @@ public class ExtractionSessionServiceImpl implements ExtractionSessionService {
         ExtractionSession session = extractionSessionRepository.findById(id)
                 .orElseThrow(() -> new SessionNotFoundException(id));
 
+        if (session.getStatus() == SessionStatus.RUNNING) {
+            return session;
+        }
+
         if (session.getStatus() != SessionStatus.CREATED && session.getStatus() != SessionStatus.PAUSED) {
             throw new InvalidSessionStateException(id, session.getStatus());
         }
