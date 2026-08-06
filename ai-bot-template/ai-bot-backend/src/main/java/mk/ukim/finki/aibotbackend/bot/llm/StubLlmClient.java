@@ -16,7 +16,7 @@ public class StubLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(StubLlmClient.class);
 
-    @Value("${GEMINI_API_KEY:${bot.llm-key:}}")
+    @Value("${bot.llm-key:${GEMINI_API_KEY:}}")
     private String apiKey;
 
     private final RestClient restClient;
@@ -63,7 +63,7 @@ public class StubLlmClient implements LlmClient {
 
     @Override
     public BotDecision decideNextAction(PageSnapshot snapshot, String goal, List<BotAction> history) {
-        log.info("Deciding next action for goal: '{}'. Step history size: {}", goal, history.size());
+        log.info("Deciding next action with Gemini LLM for goal: '{}'. Step history size: {}", goal, history.size());
 
         if (apiKey == null || apiKey.isBlank() || apiKey.contains("your_gemini_api_key")) {
             log.warn("Gemini API key is not configured. Executing multi-step mock automation sequence.");
