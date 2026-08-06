@@ -1,15 +1,58 @@
 package mk.ukim.finki.aibotbackend.bot.extraction;
 
 import org.springframework.stereotype.Component;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * Placeholder so the application boots before the assignment is implemented.
- * TODO(student): Replace this bean with a real language detector.
+ * Detector that evaluates Macedonian language confidence for extracted text.
  */
 @Component
 public class StubLanguageDetector implements LanguageDetector {
+
+    private static final Pattern CYRILLIC_PATTERN = Pattern.compile("[а-шА-ШЈјЃѓЌќЅѕЏџ]");
+    private static final Set<String> MACEDONIAN_STOP_WORDS = Set.of(
+            "во", "со", "на", "за", "од", "не", "да", "ќе", "е", "се", "ги", "му", "ѝ", "сме", "сте", "секој", "биде", "биди"
+    );
+
     @Override
     public double macedonianConfidence(String text) {
-        throw new UnsupportedOperationException("TODO(student): Implement LanguageDetector.macedonianConfidence().");
+        if (text == null || text.isBlank()) {
+            return 0.0;
+        }
+
+        String trimmed = text.trim();
+        int totalChars = trimmed.length();
+        
+        // Count Cyrillic characters
+        Matcher matcher = CYRILLIC_PATTERN.matcher(trimmed);
+        int cyrillicCount = 0;
+        while (matcher.find()) {
+            cyrillicCount++;
+        }
+
+        double cyrillicRatio = (double) cyrillicCount / totalChars;
+
+        // Check for specific Macedonian stop words
+        String[] words = trimmed.toLowerCase().split("\\s+");
+        int matchCount = 0;
+        for (String word : words) {
+            String cleanWord = word.replaceAll("[^а-шјѓќѕџ]", "");
+            if (MACEDONIAN_STOP_WORDS.contains(cleanWord)) {
+                matchCount++;
+            }
+        }
+
+        double stopWordBonus = Math.min(1.0, (double) matchCount / Math.max(1, words.length / 5.0));
+
+        // Combine ratios: if high Cyrillic content and presence of Macedonian words -> high score
+        if (cyrillicRatio > 0.4) {
+            return Math.min(1.0, cyrillicRatio * 0.7 + stopWordBonus * 0.3);
+        } else if (cyrillicRatio > 0.1) {
+            return cyrillicRatio * 0.5;
+        }
+
+        return 0.0;
     }
 }

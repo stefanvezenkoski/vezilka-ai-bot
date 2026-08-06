@@ -1,26 +1,55 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import donationApi from '../api/donationApi.ts';
 import type { CreateDonationBatchRequest, DonationBatchResponse } from '../api/types/donation.ts';
 
-/**
- * TODO(student): Drive the donation workflow for the DonationsPage: list the
- * batches (donationApi.findAll) and expose create/approve/submit actions,
- * re-fetching after every mutation, with loading/error state.
- */
 const useDonations = () => {
-  const [donations] = useState<DonationBatchResponse[]>([]);
-  const [loading] = useState<boolean>(false);
+  const [donations, setDonations] = useState<DonationBatchResponse[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  const fetchDonations = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await donationApi.findAll();
+      setDonations(response.data);
+    } catch (error) {
+      console.error('Failed to fetch donation batches', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDonations();
+  }, [fetchDonations]);
 
   const onCreate = async (data: CreateDonationBatchRequest) => {
-    void data;
-  };
-  const onApprove = async (id: number) => {
-    void id;
-  };
-  const onSubmit = async (id: number) => {
-    void id;
+    try {
+      await donationApi.add(data);
+      await fetchDonations();
+    } catch (error) {
+      console.error('Failed to create donation batch', error);
+    }
   };
 
-  return { donations, loading, onCreate, onApprove, onSubmit };
+  const onApprove = async (id: number) => {
+    try {
+      await donationApi.approve(id.toString());
+      await fetchDonations();
+    } catch (error) {
+      console.error(`Failed to approve donation batch ${id}`, error);
+    }
+  };
+
+  const onSubmit = async (id: number) => {
+    try {
+      await donationApi.submit(id.toString());
+      await fetchDonations();
+    } catch (error) {
+      console.error(`Failed to submit donation batch ${id}`, error);
+    }
+  };
+
+  return { donations, loading, onCreate, onApprove, onSubmit, refetch: fetchDonations };
 };
 
 export default useDonations;

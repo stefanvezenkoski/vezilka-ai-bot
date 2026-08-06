@@ -1,0 +1,24 @@
+# Tasks - AI Bot Development
+
+- [x] Milestone 1: Browser agent — drive a real browser using Playwright
+  - [x] Add Playwright dependency in `pom.xml`
+  - [x] Implement `StubBrowserAgent` class using Playwright
+- [x] Milestone 2: LLM decision-making — prompt an LLM and parse a structured BotDecision
+  - [x] Implement `LlmClientImpl` / `StubLlmClient` with official SDK or API
+  - [x] Design prompts for next action decisions
+- [x] Milestone 3: Kajgana Bot — login flow and goal building
+  - [x] Implement `StubSocialNetworkBot` / `KajganaBot` logic
+- [x] Milestone 4: Extraction & language filtering
+  - [x] Implement `StubContentExtractor` to parse posts from HTML
+  - [x] Implement `StubLanguageDetector` with Macedonian confidence scoring
+- [x] Milestone 5: Orchestration
+  - [x] Implement `BotOrchestratorImpl.runSession`
+- [x] Milestone 6: Domain & application services
+  - [x] Implement service methods in Post, Session, and Donation services
+- [x] Milestone 7: Vezilka integration
+  - [x] Implement `StubVezilkaClient` to submit donations and query status
+- [x] Milestone 8: Frontend features
+  - [x] Implement React hooks (`usePosts`, `useDonations`, `useSessionDetails`)
+  - [x] Finish `StartSessionDialog` and `SessionCard` React components
+- [x] Milestone 9: Integration and Repository Tests
+  - [x] Enable and complete tests in `src/test/java/...`

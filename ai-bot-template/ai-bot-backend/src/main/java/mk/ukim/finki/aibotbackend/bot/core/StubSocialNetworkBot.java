@@ -7,19 +7,18 @@ import mk.ukim.finki.aibotbackend.bot.llm.LlmClient;
 import mk.ukim.finki.aibotbackend.config.BotProperties;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionTarget;
 import mk.ukim.finki.aibotbackend.model.enums.SocialNetwork;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Placeholder so the application boots before the assignment is implemented.
- *
- * <p>TODO(student): Replace this bean with a bot for YOUR assigned social
- * network, e.g. {@code InstagramBot extends AbstractSocialNetworkBot}, and
- * implement {@link #network()}, {@link #login()} and
- * {@link #buildGoal(ExtractionTarget)}. Do not override
- * {@code execute(...)} — the loop is shared.</p>
+ * SocialNetworkBot implementation for Kajgana.mk and Forum.Kajgana.com.
  */
 @Component
 public class StubSocialNetworkBot extends AbstractSocialNetworkBot {
+
+    private static final Logger log = LoggerFactory.getLogger(StubSocialNetworkBot.class);
+
     public StubSocialNetworkBot(
         BrowserAgent browserAgent,
         LlmClient llmClient,
@@ -32,16 +31,29 @@ public class StubSocialNetworkBot extends AbstractSocialNetworkBot {
 
     @Override
     public SocialNetwork network() {
-        throw new UnsupportedOperationException("TODO(student): Return your assigned social network.");
+        return SocialNetwork.KAJGANA;
     }
 
     @Override
     public void login() {
-        throw new UnsupportedOperationException("TODO(student): Implement the network-specific login flow.");
+        log.info("Starting initial navigation for Kajgana.mk / forum.kajgana.com...");
+        try {
+            browserAgent.navigateTo("https://kajgana.com");
+        } catch (Exception e) {
+            log.warn("Failed initial navigation to kajgana.com, falling back to forum.kajgana.com", e);
+            browserAgent.navigateTo("https://forum.kajgana.com");
+        }
     }
 
     @Override
     protected String buildGoal(ExtractionTarget target) {
-        throw new UnsupportedOperationException("TODO(student): Build the extraction goal for a target.");
+        if (target == null || target.getValue() == null) {
+            return "Navigate to https://kajgana.com or https://forum.kajgana.com and extract Macedonian articles and discussions.";
+        }
+
+        return switch (target.getType()) {
+            case FEED_URL, PROFILE -> "Navigate to " + target.getValue() + " on Kajgana / Forum Kajgana and extract Macedonian articles, posts, and thread comments.";
+            case KEYWORD, HASHTAG -> "Search for keyword '" + target.getValue() + "' on Kajgana.mk and forum.kajgana.com and extract Macedonian discussions and articles.";
+        };
     }
 }

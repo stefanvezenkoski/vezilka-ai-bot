@@ -2,6 +2,8 @@ package mk.ukim.finki.aibotbackend.service.application.impl;
 
 import java.util.List;
 import java.util.Optional;
+import mk.ukim.finki.aibotbackend.events.SessionStartedEvent;
+import mk.ukim.finki.aibotbackend.model.domain.ExtractionSession;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractionSessionDto;
 import mk.ukim.finki.aibotbackend.model.dto.DisplayBotActionLogDto;
 import mk.ukim.finki.aibotbackend.model.dto.DisplayExtractionSessionDto;
@@ -10,9 +12,11 @@ import mk.ukim.finki.aibotbackend.service.domain.BotActionLogService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractionSessionService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ExtractionSessionApplicationServiceImpl implements ExtractionSessionApplicationService {
+
     private final ExtractionSessionService extractionSessionService;
     private final BotActionLogService botActionLogService;
     private final ApplicationEventPublisher applicationEventPublisher;
@@ -29,39 +33,35 @@ public class ExtractionSessionApplicationServiceImpl implements ExtractionSessio
 
     @Override
     public List<DisplayExtractionSessionDto> findAll() {
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement ExtractionSessionApplicationService.findAll().");
+        return DisplayExtractionSessionDto.from(extractionSessionService.findAll());
     }
 
     @Override
     public Optional<DisplayExtractionSessionDto> findById(Long id) {
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement ExtractionSessionApplicationService.findById().");
+        return extractionSessionService.findById(id)
+                .map(DisplayExtractionSessionDto::from);
     }
 
     @Override
     public DisplayExtractionSessionDto create(CreateExtractionSessionDto createExtractionSessionDto) {
-        // TODO(student): Map the DTO to an entity (toExtractionSession), delegate to
-        //  the domain service and map the result back (DisplayExtractionSessionDto.from).
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement ExtractionSessionApplicationService.create().");
+        ExtractionSession session = createExtractionSessionDto.toExtractionSession();
+        ExtractionSession created = extractionSessionService.create(session);
+        return DisplayExtractionSessionDto.from(created);
     }
 
     @Override
+    @Transactional
     public DisplayExtractionSessionDto start(Long id) {
-        // TODO(student): Start the session via the domain service, then publish
-        //  new SessionStartedEvent(id) with applicationEventPublisher — the
-        //  SessionStartedListener picks it up and runs the bot asynchronously.
-        //  This method needs to run in a transaction for the AFTER_COMMIT
-        //  listener to fire (see jakarta.transaction.Transactional).
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement ExtractionSessionApplicationService.start().");
+        ExtractionSession startedSession = extractionSessionService.start(id);
+        applicationEventPublisher.publishEvent(new SessionStartedEvent(id));
+        return DisplayExtractionSessionDto.from(startedSession);
     }
 
     @Override
+    @Transactional
     public DisplayExtractionSessionDto stop(Long id) {
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement ExtractionSessionApplicationService.stop().");
+        ExtractionSession stoppedSession = extractionSessionService.stop(id);
+        return DisplayExtractionSessionDto.from(stoppedSession);
     }
 
     @Override
