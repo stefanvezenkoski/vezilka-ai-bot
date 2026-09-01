@@ -43,6 +43,8 @@ public class BotOrchestratorImpl implements BotOrchestrator {
             .findById(sessionId)
             .orElseThrow(() -> new SessionNotFoundException(sessionId));
 
+        List<ExtractionTarget> targets = new ArrayList<>(session.getTargets());
+
         try {
             // 1. Mark session RUNNING
             extractionSessionService.start(sessionId);
@@ -51,7 +53,7 @@ public class BotOrchestratorImpl implements BotOrchestrator {
             socialNetworkBot.login();
 
             // 3. Process each target in the session
-            for (ExtractionTarget target : session.getTargets()) {
+            for (ExtractionTarget target : targets) {
                 log.info("Executing target {} for session {}", target.getValue(), sessionId);
                 
                 List<CreateExtractedPostDto> extractedDtos = socialNetworkBot.execute(

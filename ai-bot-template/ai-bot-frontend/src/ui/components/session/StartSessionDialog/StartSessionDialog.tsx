@@ -72,13 +72,6 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
             onChange={(e) => setSocialNetwork(e.target.value as SocialNetwork)}
           >
             <MenuItem value='KAJGANA'>Kajgana.mk / Forum Kajgana</MenuItem>
-            <MenuItem value='REDDIT'>Reddit</MenuItem>
-            <MenuItem value='X'>X (Twitter)</MenuItem>
-            <MenuItem value='FACEBOOK'>Facebook</MenuItem>
-            <MenuItem value='INSTAGRAM'>Instagram</MenuItem>
-            <MenuItem value='YOUTUBE'>YouTube</MenuItem>
-            <MenuItem value='THREADS'>Threads</MenuItem>
-            <MenuItem value='LINKEDIN'>LinkedIn</MenuItem>
           </Select>
         </FormControl>
 

@@ -1,13 +1,17 @@
 package mk.ukim.finki.aibotbackend.service.domain.impl;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import jakarta.persistence.criteria.Predicate;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractedPost;
 import mk.ukim.finki.aibotbackend.model.dto.PostFilterDto;
 import mk.ukim.finki.aibotbackend.repository.ExtractedPostRepository;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -17,6 +21,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class ExtractedPostServiceImpl implements ExtractedPostService {
+
+    private static final Logger log = LoggerFactory.getLogger(ExtractedPostServiceImpl.class);
 
     private final ExtractedPostRepository extractedPostRepository;
 
@@ -73,9 +79,62 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
         return extractedPostRepository.findAllById(ids);
     }
 
+    @jakarta.annotation.PostConstruct
+    public void cleanupExistingDuplicates() {
+        try {
+            List<ExtractedPost> allPosts = extractedPostRepository.findAll();
+            if (allPosts.isEmpty()) return;
+
+            Set<String> seenContent = new HashSet<>();
+            List<Long> duplicateIds = new ArrayList<>();
+
+            for (ExtractedPost post : allPosts) {
+                String contentKey = post.getContent() != null ? post.getContent().trim() : "";
+                if (contentKey.isBlank()) continue;
+
+                if (seenContent.contains(contentKey)) {
+                    duplicateIds.add(post.getId());
+                } else {
+                    seenContent.add(contentKey);
+                }
+            }
+
+            if (!duplicateIds.isEmpty()) {
+                log.info("Cleaning up {} duplicate posts from database...", duplicateIds.size());
+                extractedPostRepository.deleteAllById(duplicateIds);
+                log.info("Database duplicate post cleanup complete.");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to execute automatic duplicate post cleanup", e);
+        }
+    }
+
     @Override
     public List<ExtractedPost> saveAll(List<ExtractedPost> posts) {
-        return extractedPostRepository.saveAll(posts);
+        if (posts == null || posts.isEmpty()) {
+            return List.of();
+        }
+
+        List<ExtractedPost> uniqueToSave = new ArrayList<>();
+        java.util.Set<String> seenContentInBatch = new java.util.HashSet<>();
+
+        for (ExtractedPost post : posts) {
+            String content = post.getContent() != null ? post.getContent().trim() : "";
+            if (content.isBlank()) {
+                continue;
+            }
+
+            if (!seenContentInBatch.contains(content) && !extractedPostRepository.existsByContent(content)) {
+                seenContentInBatch.add(content);
+                uniqueToSave.add(post);
+            }
+        }
+
+        if (uniqueToSave.isEmpty()) {
+            return List.of();
+        }
+
+        return extractedPostRepository.saveAll(uniqueToSave);
     }
 
     @Override

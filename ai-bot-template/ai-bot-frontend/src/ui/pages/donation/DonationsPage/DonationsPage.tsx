@@ -11,7 +11,7 @@ import SubmitDonationDialog from '../../../components/donation/SubmitDonationDia
  * SubmitDonationDialog, plus overall donation statistics.
  */
 const DonationsPage = () => {
-  const { donations, loading } = useDonations();
+  const { donations, loading, onApprove, onSubmit } = useDonations();
 
   const [newBatchDialogOpen, setNewBatchDialogOpen] = useState<boolean>(false);
 
@@ -39,7 +39,7 @@ const DonationsPage = () => {
          <Grid container spacing={2}>
            {donations.map((batch) => (
              <Grid key={batch.id} size={{ xs: 12, sm: 6, md: 4 }}>
-               <DonationBatchCard batch={batch}/>
+               <DonationBatchCard batch={batch} onApprove={onApprove} onSubmit={onSubmit}/>
              </Grid>
            ))}
          </Grid>

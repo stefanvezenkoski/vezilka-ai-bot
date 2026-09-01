@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * SocialNetworkBot implementation for Kajgana.mk and Forum.Kajgana.com.
+ * Configured to target posts in the date range 01.08.2026 to 01.09.2026.
  */
 @Component
 public class StubSocialNetworkBot extends AbstractSocialNetworkBot {
@@ -48,12 +49,21 @@ public class StubSocialNetworkBot extends AbstractSocialNetworkBot {
     @Override
     protected String buildGoal(ExtractionTarget target) {
         if (target == null || target.getValue() == null) {
-            return "Navigate to https://kajgana.com or https://forum.kajgana.com and extract Macedonian articles and discussions.";
+            return "Navigate to https://kajgana.com and extract all Macedonian articles and discussions published between 1.8.2026 and 1.9.2026.";
         }
 
         return switch (target.getType()) {
-            case FEED_URL, PROFILE -> "Navigate to " + target.getValue() + " on Kajgana / Forum Kajgana and extract Macedonian articles, posts, and thread comments.";
-            case KEYWORD, HASHTAG -> "Search for keyword '" + target.getValue() + "' on Kajgana.mk and forum.kajgana.com and extract Macedonian discussions and articles.";
+            case FEED_URL, PROFILE -> {
+                String url = target.getValue();
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    url = "https://" + url;
+                }
+                yield "Navigate to " + url + " on Kajgana and extract all Macedonian articles, posts, and comments published between 1.8.2026 and 1.9.2026.";
+            }
+            case KEYWORD, HASHTAG -> {
+                String searchUrl = "https://kajgana.com/baraj?search=" + java.net.URLEncoder.encode(target.getValue(), java.nio.charset.StandardCharsets.UTF_8);
+                yield "Navigate to " + searchUrl + " and extract Macedonian discussions and articles related to '" + target.getValue() + "' published between 1.8.2026 and 1.9.2026.";
+            }
         };
     }
 }

@@ -47,10 +47,8 @@ public class StubLanguageDetector implements LanguageDetector {
         double stopWordBonus = Math.min(1.0, (double) matchCount / Math.max(1, words.length / 5.0));
 
         // Combine ratios: if high Cyrillic content and presence of Macedonian words -> high score
-        if (cyrillicRatio > 0.4) {
-            return Math.min(1.0, cyrillicRatio * 0.7 + stopWordBonus * 0.3);
-        } else if (cyrillicRatio > 0.1) {
-            return cyrillicRatio * 0.5;
+        if (cyrillicRatio > 0.05) {
+            return Math.min(1.0, cyrillicRatio * 0.6 + stopWordBonus * 0.4);
         }
 
         return 0.0;

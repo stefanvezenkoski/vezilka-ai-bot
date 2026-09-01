@@ -61,6 +61,22 @@ public abstract class AbstractSocialNetworkBot implements SocialNetworkBot {
             PageSnapshot snapshot = browserAgent.snapshot();
             BotDecision decision = llmClient.decideNextAction(snapshot, goal, history);
             if (decision.goalReached()) {
+                if (history.stream().noneMatch(action -> action.type() == BotActionType.EXTRACT)) {
+                    BotAction extractionAction = new BotAction(
+                        BotActionType.EXTRACT,
+                        null,
+                        null,
+                        "Required extraction before completing the target"
+                    );
+                    boolean successful = true;
+                    try {
+                        perform(extractionAction, snapshot, collected);
+                    } catch (RuntimeException exception) {
+                        successful = false;
+                    }
+                    history.add(extractionAction);
+                    stepListener.onStep(extractionAction, successful);
+                }
                 break;
             }
 

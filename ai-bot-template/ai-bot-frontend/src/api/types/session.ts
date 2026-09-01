@@ -6,7 +6,8 @@ export type SocialNetwork =
   | 'TIKTOK'
   | 'YOUTUBE'
   | 'THREADS'
-  | 'LINKEDIN';
+  | 'LINKEDIN'
+  | 'KAJGANA';
 
 export type SessionStatus = 'CREATED' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'FAILED';
 

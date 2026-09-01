@@ -44,16 +44,25 @@ public class StubBrowserAgent implements BrowserAgent {
                 .setHeadless(botProperties.headless());
         
         browser = playwright.chromium().launch(options);
-        context = browser.newContext();
+        context = browser.newContext(new Browser.NewContextOptions()
+                .setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                .setViewportSize(1280, 800)
+                .setLocale("mk-MK")
+                .setIgnoreHTTPSErrors(true)
+        );
         page = context.newPage();
-        log.info("Playwright browser started successfully.");
+        log.info("Playwright browser started successfully with stealth headers.");
     }
 
     @Override
     public synchronized void navigateTo(String url) {
         ensureStarted();
         log.info("Navigating to: {}", url);
-        page.navigate(url);
+        try {
+            page.navigate(url);
+        } catch (Exception e) {
+            log.warn("Failed to navigate to URL: {}. Continuing crawler...", url, e);
+        }
     }
 
     @Override

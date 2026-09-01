@@ -11,6 +11,7 @@ import mk.ukim.finki.aibotbackend.repository.ExtractionSessionRepository;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractionSessionService;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ExtractionSessionServiceImpl implements ExtractionSessionService {
@@ -27,8 +28,11 @@ public class ExtractionSessionServiceImpl implements ExtractionSessionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<ExtractionSession> findById(Long id) {
-        return extractionSessionRepository.findById(id);
+        Optional<ExtractionSession> session = extractionSessionRepository.findById(id);
+        session.ifPresent(s -> s.getTargets().size());
+        return session;
     }
 
     @Override

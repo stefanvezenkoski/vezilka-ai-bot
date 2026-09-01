@@ -28,7 +28,8 @@
   </scm>
   <properties>
     <java.version>21</java.version>
-    <lombok.version>1.18.36</lombok.version>
+    <!-- Supports the JDK 25 compiler used by the current development environment. -->
+    <lombok.version>1.18.44</lombok.version>
   </properties>
   <dependencies>
     <dependency>
