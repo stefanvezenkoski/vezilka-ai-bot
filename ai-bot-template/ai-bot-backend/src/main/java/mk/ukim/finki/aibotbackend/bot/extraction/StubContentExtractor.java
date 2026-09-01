@@ -19,21 +19,29 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Extractor backed by DOM parsing tailored for Kajgana.mk and Forum.Kajgana.com.
- * Strictly extracts Macedonian content published between 01.08.2026 and 01.09.2026.
+ * Extractor backed by comprehensive DOM parsing tailored for Kajgana.mk and Forum.Kajgana.com.
+ * Captures ABSOLUTELY EVERY post, article body, forum comment, headline, and paragraph
+ * published in the target period (01.08.2026 - 01.09.2026).
  */
 @Component
 public class StubContentExtractor implements ContentExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(StubContentExtractor.class);
-    private static final double MIN_MACEDONIAN_CONFIDENCE = 0.30;
 
-    // Date filtering boundaries: 01.08.2026 - 01.09.2026
+    // Permissive confidence threshold (0.05) to ensure NO valid post is discarded
+    private static final double MIN_MACEDONIAN_CONFIDENCE = 0.05;
+
+    // Target Date Range: 01.08.2026 - 01.09.2026
     private static final LocalDateTime RANGE_START = LocalDateTime.of(2026, 8, 1, 0, 0, 0);
     private static final LocalDateTime RANGE_END = LocalDateTime.of(2026, 9, 1, 23, 59, 59);
 
     private static final Pattern ARTICLE_BODY_PATTERN = Pattern.compile(
-            "<div[^>]*class=[\"'][^\"']*field--name-body[^\"']*[\"'][^>]*>(.*?)</div>\\s*</div>",
+            "<(?:div|article|section)[^>]*(?:class|id)=[\"'][^\"']*(?:field--name-body|article|entry-content|post-content|message-content|bbWrapper|message-inner)[^\"']*[\"'][^>]*>(.*?)</(?:div|article|section)>",
+            Pattern.DOTALL | Pattern.CASE_INSENSITIVE
+    );
+
+    private static final Pattern FORUM_MESSAGE_PATTERN = Pattern.compile(
+            "<(?:article|div|li)[^>]*(?:class|id)=[\"'][^\"']*(?:message|post|thread|reply|comment)[^\"']*[\"'][^>]*>(.*?)</(?:article|div|li)>",
             Pattern.DOTALL | Pattern.CASE_INSENSITIVE
     );
 
@@ -44,10 +52,10 @@ public class StubContentExtractor implements ContentExtractor {
 
     private static final Pattern H1_TITLE_PATTERN = Pattern.compile("<h1[^>]*>(.*?)</h1>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
     private static final Pattern TITLE_PATTERN = Pattern.compile("<h[1-6][^>]*>(.*?)</h[1-6]>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-    private static final Pattern PARAGRAPH_PATTERN = Pattern.compile("<p[^>]*>(.*?)</p>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+    private static final Pattern PARAGRAPH_PATTERN = Pattern.compile("<(?:p|div|span|li)[^>]*>(.*?)</(?:p|div|span|li)>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
     private static final Pattern IMG_PATTERN = Pattern.compile("<img[^>]+src=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
-    private static final Pattern A_HREF_PATTERN = Pattern.compile("<a[^>]+href=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
-    private static final Pattern AUTHOR_PATTERN = Pattern.compile("<div[^>]*class=[\"'][^\"']*field--name-field-author-source[^\"']*[\"'][^>]*>(.*?)</div>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+    private static final Pattern A_HREF_PATTERN = Pattern.compile("<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+    private static final Pattern AUTHOR_PATTERN = Pattern.compile("<(?:div|span|a)[^>]*class=[\"'][^\"']*(?:field--name-field-author-source|username|author|byline|poster)[^\"']*[\"'][^>]*>(.*?)</(?:div|span|a)>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
     private static final Pattern DATETIME_TAG_PATTERN = Pattern.compile("<time[^>]+datetime=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
     private static final Pattern DATA_TIME_PATTERN = Pattern.compile("data-time=[\"'](\\d+)[\"']", Pattern.CASE_INSENSITIVE);
 
@@ -59,7 +67,7 @@ public class StubContentExtractor implements ContentExtractor {
 
     @Override
     public List<CreateExtractedPostDto> extract(PageSnapshot snapshot) {
-        log.info("Extracting content for target date range 01.08.2026 - 01.09.2026 from URL: {}", snapshot.url());
+        log.info("Performing exhaustive extraction for August 2026 from snapshot URL: {}", snapshot.url());
         List<CreateExtractedPostDto> posts = new ArrayList<>();
         Set<String> seenHashes = new HashSet<>();
 
@@ -69,78 +77,58 @@ public class StubContentExtractor implements ContentExtractor {
 
         String html = snapshot.domContent();
         String currentUrl = snapshot.url() != null && !snapshot.url().isBlank() ? snapshot.url() : "https://kajgana.com";
-        LocalDateTime parsedTimestamp = parseDateFromHtml(html);
+        LocalDateTime defaultDate = parseDateFromHtml(html);
 
-        // 1. Full Article Page Detection
-        int bodyIndex = html.indexOf("field--name-body");
-        if (bodyIndex != -1) {
-            String articleSectionHtml = html.substring(bodyIndex);
-            int endTagIndex = articleSectionHtml.indexOf("field--name-field-tags");
-            if (endTagIndex == -1) endTagIndex = articleSectionHtml.indexOf("<footer");
-            if (endTagIndex == -1) endTagIndex = articleSectionHtml.indexOf("</article>");
-            if (endTagIndex != -1) {
-                articleSectionHtml = articleSectionHtml.substring(0, endTagIndex);
-            }
-
-            String articleTitle = snapshot.title() != null ? snapshot.title() : "";
-            Matcher h1Matcher = H1_TITLE_PATTERN.matcher(html);
-            if (h1Matcher.find()) {
-                articleTitle = stripHtml(h1Matcher.group(1));
-            }
-
-            String author = "Кајгана";
-            Matcher authorMatcher = AUTHOR_PATTERN.matcher(html);
-            if (authorMatcher.find()) {
-                String parsedAuthor = stripHtml(authorMatcher.group(1));
-                if (!parsedAuthor.isBlank()) {
-                    author = parsedAuthor;
-                }
-            }
-
-            StringBuilder fullBodyBuilder = new StringBuilder();
-            if (!articleTitle.isBlank()) {
-                fullBodyBuilder.append(articleTitle).append("\n\n");
-            }
-
-            Matcher pMatcher = PARAGRAPH_PATTERN.matcher(articleSectionHtml);
-            while (pMatcher.find()) {
-                String pText = stripHtml(pMatcher.group(1));
-                if (!pText.isBlank() && pText.length() >= 5 && !pText.equalsIgnoreCase(articleTitle)) {
-                    fullBodyBuilder.append(pText).append("\n\n");
-                }
-            }
-
-            String fullArticleContent = fullBodyBuilder.toString().trim();
-            if (fullArticleContent.length() >= 30) {
-                List<CreateMediaItemDto> mediaItems = new ArrayList<>();
-                Matcher imgMatcher = IMG_PATTERN.matcher(html);
-                if (imgMatcher.find()) {
-                    String imgSrc = resolveUrl(currentUrl, imgMatcher.group(1));
-                    mediaItems.add(new CreateMediaItemDto(MediaType.IMAGE, imgSrc, "Main Article Image"));
-                }
-
-                String hashKey = currentUrl + "::" + fullArticleContent.hashCode();
+        // 1. Full Article & Forum Body Extraction
+        Matcher articleMatcher = ARTICLE_BODY_PATTERN.matcher(html);
+        while (articleMatcher.find()) {
+            String bodyHtml = articleMatcher.group(1);
+            String textContent = stripHtml(bodyHtml);
+            if (textContent.length() >= 15) {
+                String hashKey = currentUrl + "::" + textContent.hashCode();
                 if (!seenHashes.contains(hashKey)) {
                     seenHashes.add(hashKey);
                     addIfValid(posts, new CreateExtractedPostDto(
                             null,
-                            author,
-                            fullArticleContent,
+                            extractAuthor(html),
+                            textContent,
                             currentUrl,
-                            parsedTimestamp,
+                            defaultDate,
                             null,
-                            mediaItems
+                            extractMedia(bodyHtml, currentUrl)
                     ));
                 }
             }
         }
 
-        // 2. Structured teaser/card blocks
+        // 2. Forum Post & Comment Messages (XenForo forum.kajgana.com)
+        Matcher forumMatcher = FORUM_MESSAGE_PATTERN.matcher(html);
+        while (forumMatcher.find()) {
+            String messageHtml = forumMatcher.group(1);
+            String textContent = stripHtml(messageHtml);
+            if (textContent.length() >= 15) {
+                String hashKey = currentUrl + "::" + textContent.hashCode();
+                if (!seenHashes.contains(hashKey)) {
+                    seenHashes.add(hashKey);
+                    addIfValid(posts, new CreateExtractedPostDto(
+                            null,
+                            extractAuthor(messageHtml),
+                            textContent,
+                            currentUrl,
+                            parseDateFromHtml(messageHtml),
+                            null,
+                            extractMedia(messageHtml, currentUrl)
+                    ));
+                }
+            }
+        }
+
+        // 3. Teaser Cards & Block Elements
         Matcher teaserMatcher = TEASER_BLOCK_PATTERN.matcher(html);
         while (teaserMatcher.find()) {
             String blockHtml = teaserMatcher.group(1);
-            CreateExtractedPostDto dto = parseBlock(blockHtml, currentUrl, snapshot.title());
-            if (dto != null && dto.content() != null && dto.content().length() >= 20) {
+            CreateExtractedPostDto dto = parseBlock(blockHtml, currentUrl);
+            if (dto != null && dto.content() != null && dto.content().length() >= 10) {
                 String hashKey = dto.sourceUrl() + "::" + dto.content().hashCode();
                 if (!seenHashes.contains(hashKey)) {
                     seenHashes.add(hashKey);
@@ -149,7 +137,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 3. Heading + Paragraph pairs across DOM
+        // 4. Headings (h1-h6) + Paragraph/Text Blocks
         Pattern hpPattern = Pattern.compile(
                 "<(h[1-6])[^>]*>(.*?)</\\1>(?:\\s*<(?:p|div|span|li)[^>]*>(.*?)</(?:p|div|span|li)>)?",
                 Pattern.DOTALL | Pattern.CASE_INSENSITIVE
@@ -158,7 +146,7 @@ public class StubContentExtractor implements ContentExtractor {
         while (hpMatcher.find()) {
             String headingText = stripHtml(hpMatcher.group(2));
             String pText = hpMatcher.group(3) != null ? stripHtml(hpMatcher.group(3)) : "";
-            if (headingText.length() >= 10) {
+            if (headingText.length() >= 5) {
                 String fullContent = headingText + (!pText.isBlank() ? "\n\n" + pText : "");
                 String hashKey = currentUrl + "::" + fullContent.hashCode();
                 if (!seenHashes.contains(hashKey)) {
@@ -168,7 +156,7 @@ public class StubContentExtractor implements ContentExtractor {
                             "Кајгана",
                             fullContent,
                             currentUrl,
-                            parsedTimestamp,
+                            defaultDate,
                             null,
                             List.of()
                     ));
@@ -176,11 +164,11 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 4. Standalone Paragraphs
+        // 5. Every individual text paragraph / container (length >= 15)
         Matcher pMatcher = PARAGRAPH_PATTERN.matcher(html);
         while (pMatcher.find()) {
             String pText = stripHtml(pMatcher.group(1));
-            if (pText.length() >= 25) {
+            if (pText.length() >= 15) {
                 String hashKey = currentUrl + "::" + pText.hashCode();
                 if (!seenHashes.contains(hashKey)) {
                     seenHashes.add(hashKey);
@@ -189,7 +177,7 @@ public class StubContentExtractor implements ContentExtractor {
                             "Кајгана",
                             pText,
                             currentUrl,
-                            parsedTimestamp,
+                            defaultDate,
                             null,
                             List.of()
                     ));
@@ -197,11 +185,34 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        log.info("Extracted {} valid Macedonian posts for August 2026 from URL: {}", posts.size(), currentUrl);
+        // 6. Anchor links with descriptive text (e.g. article links)
+        Matcher aMatcher = A_HREF_PATTERN.matcher(html);
+        while (aMatcher.find()) {
+            String href = aMatcher.group(1);
+            String linkText = stripHtml(aMatcher.group(2));
+            if (linkText.length() >= 10 && !href.startsWith("#") && !href.startsWith("javascript:")) {
+                String fullUrl = resolveUrl(currentUrl, href);
+                String hashKey = fullUrl + "::" + linkText.hashCode();
+                if (!seenHashes.contains(hashKey)) {
+                    seenHashes.add(hashKey);
+                    addIfValid(posts, new CreateExtractedPostDto(
+                            null,
+                            "Кајгана",
+                            linkText,
+                            fullUrl,
+                            defaultDate,
+                            null,
+                            List.of()
+                    ));
+                }
+            }
+        }
+
+        log.info("Exhaustive extraction completed. Extracted {} total posts/texts for August 2026 from URL: {}", posts.size(), currentUrl);
         return posts;
     }
 
-    private CreateExtractedPostDto parseBlock(String blockHtml, String baseUrl, String defaultTitle) {
+    private CreateExtractedPostDto parseBlock(String blockHtml, String baseUrl) {
         String title = "";
         Matcher titleMatcher = TITLE_PATTERN.matcher(blockHtml);
         if (titleMatcher.find()) {
@@ -216,7 +227,7 @@ public class StubContentExtractor implements ContentExtractor {
         Matcher pMatcher = PARAGRAPH_PATTERN.matcher(blockHtml);
         while (pMatcher.find()) {
             String text = stripHtml(pMatcher.group(1));
-            if (!text.isBlank() && !text.equals(title)) {
+            if (!text.isBlank() && !text.equals(title) && text.length() >= 5) {
                 contentBuilder.append(text).append("\n\n");
             }
         }
@@ -226,15 +237,8 @@ public class StubContentExtractor implements ContentExtractor {
             contentText = stripHtml(blockHtml);
         }
 
-        if (contentText.length() < 15) {
+        if (contentText.length() < 10) {
             return null;
-        }
-
-        List<CreateMediaItemDto> mediaItems = new ArrayList<>();
-        Matcher imgMatcher = IMG_PATTERN.matcher(blockHtml);
-        if (imgMatcher.find()) {
-            String imgSrc = resolveUrl(baseUrl, imgMatcher.group(1));
-            mediaItems.add(new CreateMediaItemDto(MediaType.IMAGE, imgSrc, "Article Image"));
         }
 
         String sourceUrl = baseUrl;
@@ -247,17 +251,40 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        LocalDateTime blockDate = parseDateFromHtml(blockHtml);
-
         return new CreateExtractedPostDto(
                 null,
-                "Кајгана",
+                extractAuthor(blockHtml),
                 contentText,
                 sourceUrl,
-                blockDate,
+                parseDateFromHtml(blockHtml),
                 null,
-                mediaItems
+                extractMedia(blockHtml, baseUrl)
         );
+    }
+
+    private String extractAuthor(String htmlSnippet) {
+        if (htmlSnippet == null) return "Кајгана";
+        Matcher authorMatcher = AUTHOR_PATTERN.matcher(htmlSnippet);
+        if (authorMatcher.find()) {
+            String author = stripHtml(authorMatcher.group(1));
+            if (!author.isBlank() && author.length() < 50) {
+                return author;
+            }
+        }
+        return "Кајгана";
+    }
+
+    private List<CreateMediaItemDto> extractMedia(String htmlSnippet, String baseUrl) {
+        List<CreateMediaItemDto> mediaItems = new ArrayList<>();
+        if (htmlSnippet == null) return mediaItems;
+        Matcher imgMatcher = IMG_PATTERN.matcher(htmlSnippet);
+        while (imgMatcher.find()) {
+            String imgSrc = resolveUrl(baseUrl, imgMatcher.group(1));
+            if (!imgSrc.contains("avatar") && !imgSrc.contains("icon")) {
+                mediaItems.add(new CreateMediaItemDto(MediaType.IMAGE, imgSrc, "Extracted Image"));
+            }
+        }
+        return mediaItems;
     }
 
     private LocalDateTime parseDateFromHtml(String htmlSnippet) {
@@ -279,15 +306,13 @@ public class StubContentExtractor implements ContentExtractor {
             } catch (Exception ignored) {}
         }
 
-        // Default to a date within the target August 2026 window
+        // Default timestamp within August 2026
         return LocalDateTime.of(2026, 8, 15, 12, 0);
     }
 
     private void addIfValid(List<CreateExtractedPostDto> posts, CreateExtractedPostDto dto) {
-        // Enforce date window filter 01.08.2026 - 01.09.2026
         LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 15, 12, 0);
         if (postDate.isBefore(RANGE_START) || postDate.isAfter(RANGE_END)) {
-            log.debug("Skipping post from {} outside target date range 01.08.2026-01.09.2026 (post date: {})", dto.sourceUrl(), postDate);
             return;
         }
 
