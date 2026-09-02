@@ -2,8 +2,11 @@ package mk.ukim.finki.aibotbackend.bot.llm;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import mk.ukim.finki.aibotbackend.bot.browser.PageSnapshot;
@@ -20,6 +23,7 @@ public class StubLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(StubLlmClient.class);
     private static final Pattern URL_PATTERN = Pattern.compile("https?://[^\\s]+");
+    private static final Pattern ARTICLE_HREF_PATTERN = Pattern.compile("<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>", Pattern.CASE_INSENSITIVE);
 
     @Value("${bot.llm-key:${GEMINI_API_KEY:}}")
     private String apiKey;
@@ -71,7 +75,7 @@ public class StubLlmClient implements LlmClient {
 
     @Override
     public BotDecision decideNextAction(PageSnapshot snapshot, String goal, List<BotAction> history) {
-        log.info("Deciding next action via Google Gemini AI for goal: '{}'. Step history size: {}", goal, history.size());
+        log.info("Deciding next action for goal: '{}'. Step history size: {}", goal, history.size());
 
         String targetUrl = extractUrlFromGoal(goal);
 
@@ -85,9 +89,24 @@ public class StubLlmClient implements LlmClient {
             );
         }
 
+        // If on an individual article page, extract content and prepare to navigate to next
+        String currentUrl = snapshot.url();
+        boolean isArticlePage = isIndividualArticleUrl(currentUrl, targetUrl);
+
+        if (isArticlePage) {
+            BotAction lastAction = !history.isEmpty() ? history.get(history.size() - 1) : null;
+            if (lastAction != null && lastAction.type() == BotActionType.NAVIGATE) {
+                return new BotDecision(
+                    new BotAction(BotActionType.EXTRACT, null, null, "Reading and extracting full content of article: " + currentUrl),
+                    false,
+                    "Extracting complete text directly from article page: " + currentUrl
+                );
+            }
+        }
+
         if (apiKey == null || apiKey.isBlank() || isPlaceholderKey(apiKey)) {
-            log.info("Gemini API key is not active. Using automated sequence.");
-            return decideMockNextAction(goal, history);
+            log.info("Gemini API key is not active. Using deep link crawler sequence.");
+            return decideMockNextAction(snapshot, goal, history);
         }
 
         try {
@@ -133,50 +152,130 @@ public class StubLlmClient implements LlmClient {
                     decision.action().type(), decision.goalReached(), decision.rationale());
             return decision;
         } catch (Exception e) {
-            log.error("Failed to query Gemini API; continuing with deterministic extraction", e);
-            return decideMockNextAction(goal, history);
+            log.error("Failed to query Gemini API; continuing with deep link crawler sequence", e);
+            return decideMockNextAction(snapshot, goal, history);
         }
     }
 
-    private BotDecision decideMockNextAction(String goal, List<BotAction> history) {
+    private BotDecision decideMockNextAction(PageSnapshot snapshot, String goal, List<BotAction> history) {
         String targetUrl = extractUrlFromGoal(goal);
-        int stepCount = history.size();
+        String currentUrl = snapshot != null && snapshot.url() != null ? snapshot.url() : targetUrl;
 
-        log.info("Automated crawler sequence step {} for target URL: {}", stepCount, targetUrl);
+        Set<String> visitedUrls = new HashSet<>();
+        for (BotAction action : history) {
+            if (action.type() == BotActionType.NAVIGATE && action.target() != null) {
+                visitedUrls.add(action.target());
+            }
+        }
 
-        int cycle = stepCount % 3;
-        int pageIndex = stepCount / 3;
+        // If on article page and just extracted, return to feed or visit next article
+        if (isIndividualArticleUrl(currentUrl, targetUrl)) {
+            // Find next unvisited article from history or go to next feed page
+            List<String> discovered = extractArticleLinks(snapshot != null ? snapshot.domContent() : "", targetUrl);
+            for (String link : discovered) {
+                if (!visitedUrls.contains(link)) {
+                    return new BotDecision(
+                        new BotAction(BotActionType.NAVIGATE, link, null, "Visiting next news article: " + link),
+                        false,
+                        "Navigating into news article to read full body text: " + link
+                    );
+                }
+            }
+            // If all discovered articles on this screen are visited, advance feed page
+            int currentPageNum = extractPageNumber(currentUrl);
+            String nextFeedPage = buildPagedUrl(targetUrl, currentPageNum + 1);
+            if (currentPageNum < 6) {
+                return new BotDecision(
+                    new BotAction(BotActionType.NAVIGATE, nextFeedPage, null, "Returning to category feed page " + (currentPageNum + 1)),
+                    false,
+                    "All articles visited on current page; advancing to feed page " + (currentPageNum + 1)
+                );
+            } else {
+                return new BotDecision(
+                    new BotAction(BotActionType.FINISH, null, null, "All pages and articles successfully scraped"),
+                    true,
+                    "Completed deep link extraction across multiple pages"
+                );
+            }
+        }
 
-        if (pageIndex >= 8) {
+        // We are on a category listing / feed page
+        List<String> articleLinks = extractArticleLinks(snapshot != null ? snapshot.domContent() : "", targetUrl);
+        for (String link : articleLinks) {
+            if (!visitedUrls.contains(link)) {
+                return new BotDecision(
+                    new BotAction(BotActionType.NAVIGATE, link, null, "Visiting news article: " + link),
+                    false,
+                    "Navigating into news article to read full body text: " + link
+                );
+            }
+        }
+
+        // All links on this feed page visited; advance to next page
+        int pageNum = extractPageNumber(currentUrl);
+        if (pageNum < 6) {
+            String nextPage = buildPagedUrl(targetUrl, pageNum + 1);
             return new BotDecision(
-                new BotAction(BotActionType.FINISH, null, null, "Massive multi-page extraction completed successfully"),
-                true,
-                "Finished deep crawling across 8 pages of target category"
+                new BotAction(BotActionType.NAVIGATE, nextPage, null, "Advancing to category feed page " + (pageNum + 1)),
+                false,
+                "All articles visited on page " + pageNum + "; moving to page " + (pageNum + 1)
             );
         }
 
-        switch (cycle) {
-            case 0:
-                String pagedUrl = buildPagedUrl(targetUrl, pageIndex);
-                return new BotDecision(
-                    new BotAction(BotActionType.NAVIGATE, pagedUrl, null, "Navigating to feed page " + pageIndex),
-                    false,
-                    "Step " + (stepCount + 1) + ": Opening page " + pageIndex + " of category feed: " + pagedUrl
-                );
-            case 1:
-                return new BotDecision(
-                    new BotAction(BotActionType.SCROLL, null, null, "Scrolling down page " + pageIndex),
-                    false,
-                    "Step " + (stepCount + 1) + ": Scrolling down to load lazy article elements on page " + pageIndex
-                );
-            case 2:
-            default:
-                return new BotDecision(
-                    new BotAction(BotActionType.EXTRACT, null, null, "Deep extracting all full articles from page " + pageIndex),
-                    false,
-                    "Step " + (stepCount + 1) + ": Extracting all full articles from page " + pageIndex
-                );
+        return new BotDecision(
+            new BotAction(BotActionType.FINISH, null, null, "Completed multi-page article crawling"),
+            true,
+            "Finished deep crawling all articles across all pages"
+        );
+    }
+
+    private boolean isIndividualArticleUrl(String url, String baseCategoryUrl) {
+        if (url == null) return false;
+        String cleanUrl = url.replaceAll("\\?page=\\d+", "").replaceAll("&page=\\d+", "");
+        String cleanBase = baseCategoryUrl.replaceAll("\\?page=\\d+", "").replaceAll("&page=\\d+", "");
+
+        if (cleanUrl.equalsIgnoreCase(cleanBase) || cleanUrl.equalsIgnoreCase(cleanBase + "/")) {
+            return false;
         }
+        if (cleanUrl.contains("page=") || cleanUrl.endsWith("/vesti") || cleanUrl.endsWith("/sport") || cleanUrl.endsWith("/magazin")) {
+            return false;
+        }
+        // Contains subpath like /vesti/makedonija/naslov-statija
+        return cleanUrl.length() > cleanBase.length() + 3;
+    }
+
+    private List<String> extractArticleLinks(String html, String targetUrl) {
+        List<String> links = new ArrayList<>();
+        if (html == null || html.isBlank()) return links;
+
+        String pathKeyword = "/vesti/";
+        if (targetUrl.contains("/sport")) pathKeyword = "/sport/";
+        else if (targetUrl.contains("/magazin")) pathKeyword = "/magazin/";
+        else if (targetUrl.contains("/scena")) pathKeyword = "/scena/";
+        else if (targetUrl.contains("forum.kajgana.com")) pathKeyword = "/threads/";
+
+        Matcher matcher = ARTICLE_HREF_PATTERN.matcher(html);
+        while (matcher.find()) {
+            String href = matcher.group(1);
+            if (href.contains(pathKeyword) && !href.contains("page=") && !href.contains("#") && href.length() > 15) {
+                String fullUrl = href.startsWith("http") ? href : "https://kajgana.com" + (href.startsWith("/") ? href : "/" + href);
+                if (!links.contains(fullUrl)) {
+                    links.add(fullUrl);
+                }
+            }
+        }
+        return links;
+    }
+
+    private int extractPageNumber(String url) {
+        if (url == null) return 0;
+        Matcher m = Pattern.compile("page=(\\d+)").matcher(url);
+        if (m.find()) {
+            try {
+                return Integer.parseInt(m.group(1));
+            } catch (Exception ignored) {}
+        }
+        return 0;
     }
 
     private boolean isPlaceholderKey(String key) {
@@ -220,10 +319,9 @@ public class StubLlmClient implements LlmClient {
         }
 
         sb.append("\nCRITICAL INSTRUCTIONS:\n");
-        sb.append("- You are crawling news articles and forum threads to collect a LARGE quantity of texts from 1-5 August 2026.\n");
-        sb.append("- You MUST cycle through pagination: ?page=0, ?page=1, ?page=2, ?page=3, ?page=4, ?page=5, etc.\n");
-        sb.append("- On each page, perform SCROLL and EXTRACT actions to deep-extract all articles.\n");
-        sb.append("- Do NOT set goalReached: true until at least 6-8 pages have been visited and extracted.\n");
+        sb.append("- You must navigate directly into each news article link on the page (NAVIGATE -> article URL).\n");
+        sb.append("- Once on the article page, run EXTRACT to read the complete article body.\n");
+        sb.append("- Then proceed to the next article or advance to ?page=1, ?page=2 etc.\n");
         sb.append("- Return valid JSON matching schema with 'action' (with 'type', 'target', 'value', 'reasoning'), 'goalReached' (boolean), 'rationale' (string).\n");
 
         return sb.toString();
@@ -243,7 +341,6 @@ public class StubLlmClient implements LlmClient {
             Map<?, ?> firstPart = (Map<?, ?>) parts.get(0);
             String jsonText = (String) firstPart.get("text");
 
-            // Clean json backticks if model wraps markdown
             if (jsonText.startsWith("```json")) {
                 jsonText = jsonText.substring(7);
             }
