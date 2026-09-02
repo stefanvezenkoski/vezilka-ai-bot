@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Extractor backed by comprehensive DOM parsing tailored for Kajgana.mk and Forum.Kajgana.com.
- * Strictly scopes extraction to the active page target URL and batch date window (01.08.2026 - 05.08.2026).
+ * Strictly scopes extraction to the active target category path and batch date window (01.08.2026 - 05.08.2026).
  */
 @Component
 public class StubContentExtractor implements ContentExtractor {
@@ -64,7 +64,7 @@ public class StubContentExtractor implements ContentExtractor {
 
     @Override
     public List<CreateExtractedPostDto> extract(PageSnapshot snapshot) {
-        log.info("Performing scoped extraction for August 1-5 from snapshot URL: {}", snapshot.url());
+        log.info("Performing strictly scoped extraction for August 1-5 from snapshot URL: {}", snapshot.url());
         List<CreateExtractedPostDto> posts = new ArrayList<>();
         Set<String> seenHashes = new HashSet<>();
 
@@ -184,7 +184,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        log.info("Extraction completed for URL {}. Extracted {} scoped posts/texts.", currentUrl, posts.size());
+        log.info("Extraction completed for URL {}. Extracted {} strictly scoped posts/texts.", currentUrl, posts.size());
         return posts;
     }
 
@@ -289,6 +289,27 @@ public class StubContentExtractor implements ContentExtractor {
         LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 3, 12, 0);
         if (postDate.isBefore(RANGE_START) || postDate.isAfter(RANGE_END)) {
             return;
+        }
+
+        // Strict Category Path Scoping
+        if (targetPageUrl != null && !targetPageUrl.equalsIgnoreCase("https://kajgana.com") && !targetPageUrl.equalsIgnoreCase("https://kajgana.com/")) {
+            String sourceUrl = dto.sourceUrl() != null ? dto.sourceUrl().toLowerCase() : "";
+
+            if (targetPageUrl.contains("/vesti/makedonija") && (sourceUrl.contains("/sport/") || sourceUrl.contains("/svet/") || sourceUrl.contains("/magazin/") || sourceUrl.contains("/scena/") || sourceUrl.contains("/avtomobili/"))) {
+                return;
+            }
+            if (targetPageUrl.contains("/sport") && !sourceUrl.contains("/sport") && (sourceUrl.contains("/vesti/") || sourceUrl.contains("/magazin/"))) {
+                return;
+            }
+            if (targetPageUrl.contains("/magazin") && !sourceUrl.contains("/magazin") && (sourceUrl.contains("/sport/") || sourceUrl.contains("/vesti/"))) {
+                return;
+            }
+            if (targetPageUrl.contains("/scena") && !sourceUrl.contains("/scena") && (sourceUrl.contains("/sport/") || sourceUrl.contains("/vesti/"))) {
+                return;
+            }
+            if (targetPageUrl.contains("forum.kajgana.com") && !sourceUrl.contains("forum.kajgana.com")) {
+                return;
+            }
         }
 
         double confidence = languageDetector.macedonianConfidence(dto.content());
