@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import FlashOnIcon from '@mui/icons-material/FlashOn';
 import { useState } from 'react';
 import useSessions from '../../../../hooks/useSessions.ts';
 import type { CreateTargetRequest, SocialNetwork, TargetType } from '../../../../api/types/session.ts';
@@ -44,6 +45,19 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
     const updated = [...targets];
     updated[index] = { ...updated[index], [field]: val };
     setTargets(updated);
+  };
+
+  const handleLoadAllCategories = () => {
+    setDescription('Full Monthly Scrape of All Kajgana Categories (August 2026)');
+    setTargets([
+      { type: 'FEED_URL', value: 'https://kajgana.com/vesti/makedonija' },
+      { type: 'FEED_URL', value: 'https://kajgana.com/vesti/svet' },
+      { type: 'FEED_URL', value: 'https://kajgana.com/sport' },
+      { type: 'FEED_URL', value: 'https://kajgana.com/magazin' },
+      { type: 'FEED_URL', value: 'https://kajgana.com/scena' },
+      { type: 'FEED_URL', value: 'https://kajgana.com/nauka-i-tehnologija' },
+      { type: 'FEED_URL', value: 'https://forum.kajgana.com' }
+    ]);
   };
 
   const handleSubmit = async () => {
@@ -83,45 +97,55 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
           placeholder='e.g., Extract sports discussions from Kajgana forum'
         />
 
-        <Box>
-          <Typography variant='subtitle1' sx={{ mb: 1, fontWeight: 'bold' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant='subtitle1' sx={{ fontWeight: 'bold' }}>
             Extraction Targets
           </Typography>
-          {targets.map((target, index) => (
-            <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
-              <FormControl sx={{ minWidth: 140 }}>
-                <InputLabel size='small'>Target Type</InputLabel>
-                <Select
-                  size='small'
-                  value={target.type}
-                  label='Target Type'
-                  onChange={(e) => handleTargetChange(index, 'type', e.target.value as TargetType)}
-                >
-                  <MenuItem value='FEED_URL'>Feed / Page URL</MenuItem>
-                  <MenuItem value='KEYWORD'>Keyword</MenuItem>
-                  <MenuItem value='HASHTAG'>Hashtag</MenuItem>
-                  <MenuItem value='PROFILE'>Profile</MenuItem>
-                </Select>
-              </FormControl>
-              <TextField
-                size='small'
-                fullWidth
-                label='Value'
-                value={target.value}
-                onChange={(e) => handleTargetChange(index, 'value', e.target.value)}
-                placeholder='e.g. https://forum.kajgana.com or спорт'
-              />
-              {targets.length > 1 && (
-                <IconButton color='error' onClick={() => handleRemoveTarget(index)}>
-                  <DeleteIcon />
-                </IconButton>
-              )}
-            </Box>
-          ))}
-          <Button startIcon={<AddIcon />} variant='outlined' size='small' onClick={handleAddTarget}>
-            Add Target
+          <Button
+            size='small'
+            color='secondary'
+            variant='contained'
+            startIcon={<FlashOnIcon />}
+            onClick={handleLoadAllCategories}
+          >
+            Load All Kajgana Categories
           </Button>
         </Box>
+
+        {targets.map((target, index) => (
+          <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
+            <FormControl sx={{ minWidth: 140 }}>
+              <InputLabel size='small'>Target Type</InputLabel>
+              <Select
+                size='small'
+                value={target.type}
+                label='Target Type'
+                onChange={(e) => handleTargetChange(index, 'type', e.target.value as TargetType)}
+              >
+                <MenuItem value='FEED_URL'>Feed / Page URL</MenuItem>
+                <MenuItem value='KEYWORD'>Keyword</MenuItem>
+                <MenuItem value='HASHTAG'>Hashtag</MenuItem>
+                <MenuItem value='PROFILE'>Profile</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              size='small'
+              fullWidth
+              label='Value'
+              value={target.value}
+              onChange={(e) => handleTargetChange(index, 'value', e.target.value)}
+              placeholder='e.g. https://forum.kajgana.com or спорт'
+            />
+            {targets.length > 1 && (
+              <IconButton color='error' onClick={() => handleRemoveTarget(index)}>
+                <DeleteIcon />
+              </IconButton>
+            )}
+          </Box>
+        ))}
+        <Button startIcon={<AddIcon />} variant='outlined' size='small' onClick={handleAddTarget}>
+          Add Target
+        </Button>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
