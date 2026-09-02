@@ -32,11 +32,7 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
 
     @Override
     public Page<ExtractedPost> findAll(PostFilterDto filter, int page, int size) {
-        Pageable pageable = PageRequest.of(
-            page,
-            size,
-            Sort.by(Sort.Order.desc("postedAt").nullsLast(), Sort.Order.desc("id"))
-        );
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
 
         Specification<ExtractedPost> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -94,7 +90,7 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
 
         for (ExtractedPost post : posts) {
             String content = post.getContent() != null ? post.getContent().trim() : "";
-            if (content.isBlank() || isBoilerplateText(content)) {
+            if (content.isBlank()) {
                 continue;
             }
 
@@ -115,21 +111,6 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
 
         log.info("Saving {} new extracted posts to database...", uniqueToSave.size());
         return extractedPostRepository.saveAll(uniqueToSave);
-    }
-
-    private boolean isBoilerplateText(String text) {
-        if (text == null) return true;
-        String lower = text.toLowerCase();
-        return lower.contains("featured main menu") ||
-               lower.contains("header top menu") ||
-               lower.contains("main navigation") ||
-               lower.contains("footerуслови за користење") ||
-               lower.contains("сите права задржани") ||
-               lower.equals("вести") ||
-               lower.equals("спорт") ||
-               lower.equals("магазин") ||
-               lower.equals("форум") ||
-               lower.equals("читај повеќе");
     }
 
     @Override
