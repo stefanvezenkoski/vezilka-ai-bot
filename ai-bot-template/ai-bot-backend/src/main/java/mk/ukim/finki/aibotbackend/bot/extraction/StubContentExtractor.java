@@ -20,14 +20,13 @@ import org.springframework.stereotype.Component;
 
 /**
  * Extractor backed by comprehensive DOM parsing tailored for Kajgana.mk and Forum.Kajgana.com.
- * Configured for Batch 1: First 5 days of August (01.08.2026 - 05.08.2026).
+ * Strictly scopes extraction to the active page target URL and batch date window (01.08.2026 - 05.08.2026).
  */
 @Component
 public class StubContentExtractor implements ContentExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(StubContentExtractor.class);
 
-    // Permissive confidence threshold (0.05) to ensure NO valid post is discarded
     private static final double MIN_MACEDONIAN_CONFIDENCE = 0.05;
 
     // Target Date Range: 01.08.2026 - 05.08.2026 (Batch 1: First 5 days of August 2026)
@@ -65,7 +64,7 @@ public class StubContentExtractor implements ContentExtractor {
 
     @Override
     public List<CreateExtractedPostDto> extract(PageSnapshot snapshot) {
-        log.info("Performing extraction for August 1-5, 2026 from snapshot URL: {}", snapshot.url());
+        log.info("Performing scoped extraction for August 1-5 from snapshot URL: {}", snapshot.url());
         List<CreateExtractedPostDto> posts = new ArrayList<>();
         Set<String> seenHashes = new HashSet<>();
 
@@ -94,7 +93,7 @@ public class StubContentExtractor implements ContentExtractor {
                             defaultDate,
                             null,
                             extractMedia(bodyHtml, currentUrl)
-                    ));
+                    ), currentUrl);
                 }
             }
         }
@@ -116,7 +115,7 @@ public class StubContentExtractor implements ContentExtractor {
                             parseDateFromHtml(messageHtml),
                             null,
                             extractMedia(messageHtml, currentUrl)
-                    ));
+                    ), currentUrl);
                 }
             }
         }
@@ -130,7 +129,7 @@ public class StubContentExtractor implements ContentExtractor {
                 String hashKey = dto.sourceUrl() + "::" + dto.content().hashCode();
                 if (!seenHashes.contains(hashKey)) {
                     seenHashes.add(hashKey);
-                    addIfValid(posts, dto);
+                    addIfValid(posts, dto, currentUrl);
                 }
             }
         }
@@ -157,33 +156,12 @@ public class StubContentExtractor implements ContentExtractor {
                             defaultDate,
                             null,
                             List.of()
-                    ));
+                    ), currentUrl);
                 }
             }
         }
 
-        // 5. Individual text paragraphs
-        Matcher pMatcher = PARAGRAPH_PATTERN.matcher(html);
-        while (pMatcher.find()) {
-            String pText = stripHtml(pMatcher.group(1));
-            if (pText.length() >= 15) {
-                String hashKey = currentUrl + "::" + pText.hashCode();
-                if (!seenHashes.contains(hashKey)) {
-                    seenHashes.add(hashKey);
-                    addIfValid(posts, new CreateExtractedPostDto(
-                            null,
-                            "Кајгана",
-                            pText,
-                            currentUrl,
-                            defaultDate,
-                            null,
-                            List.of()
-                    ));
-                }
-            }
-        }
-
-        // 6. Anchor links with descriptive text
+        // 5. Anchor links matching active target category path
         Matcher aMatcher = A_HREF_PATTERN.matcher(html);
         while (aMatcher.find()) {
             String href = aMatcher.group(1);
@@ -201,12 +179,12 @@ public class StubContentExtractor implements ContentExtractor {
                             defaultDate,
                             null,
                             List.of()
-                    ));
+                    ), currentUrl);
                 }
             }
         }
 
-        log.info("Extraction for August 1-5 completed. Extracted {} posts/texts from URL: {}", posts.size(), currentUrl);
+        log.info("Extraction completed for URL {}. Extracted {} scoped posts/texts.", currentUrl, posts.size());
         return posts;
     }
 
@@ -304,11 +282,10 @@ public class StubContentExtractor implements ContentExtractor {
             } catch (Exception ignored) {}
         }
 
-        // Default timestamp within August 1-5, 2026
         return LocalDateTime.of(2026, 8, 3, 12, 0);
     }
 
-    private void addIfValid(List<CreateExtractedPostDto> posts, CreateExtractedPostDto dto) {
+    private void addIfValid(List<CreateExtractedPostDto> posts, CreateExtractedPostDto dto, String targetPageUrl) {
         LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 3, 12, 0);
         if (postDate.isBefore(RANGE_START) || postDate.isAfter(RANGE_END)) {
             return;
