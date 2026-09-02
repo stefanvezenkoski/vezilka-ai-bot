@@ -1,5 +1,10 @@
 package mk.ukim.finki.aibotbackend.bot.extraction;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -19,8 +24,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Highly effective and targeted extractor tailored for Kajgana.mk and Forum.Kajgana.com.
- * Captures 100% of all structured article bodies, news teasers, and forum messages in August 2026.
+ * Deep-crawler content extractor for Kajgana.mk and Forum.Kajgana.com.
+ * Navigates into each article link to extract full body text within 1-5 August 2026.
  */
 @Component
 public class StubContentExtractor implements ContentExtractor {
@@ -29,9 +34,14 @@ public class StubContentExtractor implements ContentExtractor {
 
     private static final double MIN_MACEDONIAN_CONFIDENCE = 0.05;
 
-    // Full Target Date Range: 01.08.2026 - 01.09.2026 (Full Month Target)
+    // Strict Target Date Range: 1 - 5 August 2026
     private static final LocalDateTime RANGE_START = LocalDateTime.of(2026, 8, 1, 0, 0, 0);
-    private static final LocalDateTime RANGE_END = LocalDateTime.of(2026, 9, 1, 23, 59, 59);
+    private static final LocalDateTime RANGE_END = LocalDateTime.of(2026, 8, 5, 23, 59, 59);
+
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(4))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
 
     private static final Pattern ARTICLE_BODY_PATTERN = Pattern.compile(
             "<(?:div|article|section)[^>]*(?:class|id)=[\"'][^\"']*(?:field--name-body|article|entry-content|post-content|message-content|bbWrapper|message-inner)[^\"']*[\"'][^>]*>(.*?)</(?:div|article|section)>",
@@ -64,7 +74,7 @@ public class StubContentExtractor implements ContentExtractor {
 
     @Override
     public List<CreateExtractedPostDto> extract(PageSnapshot snapshot) {
-        log.info("Performing full monthly structured extraction for August 2026 from snapshot URL: {}", snapshot.url());
+        log.info("Performing deep crawling extraction (1-5 August 2026) from snapshot URL: {}", snapshot.url());
         List<CreateExtractedPostDto> posts = new ArrayList<>();
         Set<String> seenHashes = new HashSet<>();
 
@@ -76,7 +86,7 @@ public class StubContentExtractor implements ContentExtractor {
         String currentUrl = snapshot.url() != null && !snapshot.url().isBlank() ? snapshot.url() : "https://kajgana.com";
         LocalDateTime defaultDate = parseDateFromHtml(html);
 
-        // 1. Full Article Bodies
+        // 1. Direct Article Bodies on current page
         Matcher articleMatcher = ARTICLE_BODY_PATTERN.matcher(html);
         while (articleMatcher.find()) {
             String bodyHtml = articleMatcher.group(1);
@@ -98,7 +108,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 2. Forum Post Messages (XenForo)
+        // 2. Forum Post Messages
         Matcher forumMatcher = FORUM_MESSAGE_PATTERN.matcher(html);
         while (forumMatcher.find()) {
             String messageHtml = forumMatcher.group(1);
@@ -120,11 +130,11 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 3. Structured News Teaser Cards
+        // 3. Structured News Cards + Deep Link Crawling
         Matcher teaserMatcher = TEASER_BLOCK_PATTERN.matcher(html);
         while (teaserMatcher.find()) {
             String blockHtml = teaserMatcher.group(1);
-            CreateExtractedPostDto dto = parseBlock(blockHtml, currentUrl);
+            CreateExtractedPostDto dto = parseBlockAndCrawl(blockHtml, currentUrl);
             if (dto != null && dto.content() != null && dto.content().length() >= 20) {
                 String hashKey = dto.sourceUrl() + "::" + dto.content().hashCode();
                 if (!seenHashes.contains(hashKey)) {
@@ -134,58 +144,90 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        log.info("Full monthly extraction completed for URL {}. Extracted {} clean articles/posts.", currentUrl, posts.size());
+        log.info("Deep extraction completed for URL {}. Extracted {} full articles/posts.", currentUrl, posts.size());
         return posts;
     }
 
-    private CreateExtractedPostDto parseBlock(String blockHtml, String baseUrl) {
+    private CreateExtractedPostDto parseBlockAndCrawl(String blockHtml, String baseUrl) {
         String title = "";
         Matcher titleMatcher = TITLE_PATTERN.matcher(blockHtml);
         if (titleMatcher.find()) {
             title = stripHtml(titleMatcher.group(1));
         }
 
-        StringBuilder contentBuilder = new StringBuilder();
-        if (!title.isBlank()) {
-            contentBuilder.append(title).append("\n\n");
-        }
-
-        Matcher pMatcher = PARAGRAPH_PATTERN.matcher(blockHtml);
-        while (pMatcher.find()) {
-            String text = stripHtml(pMatcher.group(1));
-            if (!text.isBlank() && !text.equals(title) && text.length() >= 10) {
-                contentBuilder.append(text).append("\n\n");
-            }
-        }
-
-        String contentText = contentBuilder.toString().trim();
-        if (contentText.isBlank()) {
-            contentText = stripHtml(blockHtml);
-        }
-
-        if (contentText.length() < 20) {
-            return null;
-        }
-
         String sourceUrl = baseUrl;
         Matcher hrefMatcher = A_HREF_PATTERN.matcher(blockHtml);
         while (hrefMatcher.find()) {
             String href = hrefMatcher.group(1);
-            if (!href.startsWith("#") && !href.startsWith("javascript:")) {
+            if (!href.startsWith("#") && !href.startsWith("javascript:") && href.length() > 3) {
                 sourceUrl = resolveUrl(baseUrl, href);
                 break;
             }
         }
 
+        // Deep crawl: Fetch the full inner article body from the sourceUrl
+        String deepContent = fetchFullArticleContent(sourceUrl);
+        String finalContent;
+        if (deepContent != null && deepContent.length() >= 50) {
+            finalContent = !title.isBlank() ? title + "\n\n" + deepContent : deepContent;
+        } else {
+            // Fallback to teaser card content if link fetch is not available
+            StringBuilder contentBuilder = new StringBuilder();
+            if (!title.isBlank()) {
+                contentBuilder.append(title).append("\n\n");
+            }
+            Matcher pMatcher = PARAGRAPH_PATTERN.matcher(blockHtml);
+            while (pMatcher.find()) {
+                String text = stripHtml(pMatcher.group(1));
+                if (!text.isBlank() && !text.equals(title) && text.length() >= 10) {
+                    contentBuilder.append(text).append("\n\n");
+                }
+            }
+            finalContent = contentBuilder.toString().trim();
+            if (finalContent.isBlank()) {
+                finalContent = stripHtml(blockHtml);
+            }
+        }
+
+        if (finalContent.length() < 20) {
+            return null;
+        }
+
         return new CreateExtractedPostDto(
                 null,
                 extractAuthor(blockHtml),
-                contentText,
+                finalContent,
                 sourceUrl,
                 parseDateFromHtml(blockHtml),
                 null,
                 extractMedia(blockHtml, baseUrl)
         );
+    }
+
+    private String fetchFullArticleContent(String url) {
+        if (url == null || !url.startsWith("http") || url.endsWith(".com") || url.endsWith(".com/")) {
+            return null;
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(3))
+                    .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200 && response.body() != null) {
+                String pageHtml = response.body();
+                Matcher bodyMatcher = ARTICLE_BODY_PATTERN.matcher(pageHtml);
+                if (bodyMatcher.find()) {
+                    return stripHtml(bodyMatcher.group(1));
+                }
+            }
+        } catch (Exception ignored) {
+            // Gracefully fallback to teaser text on network timeout
+        }
+        return null;
     }
 
     private String extractAuthor(String htmlSnippet) {
@@ -214,7 +256,7 @@ public class StubContentExtractor implements ContentExtractor {
     }
 
     private LocalDateTime parseDateFromHtml(String htmlSnippet) {
-        if (htmlSnippet == null) return LocalDateTime.of(2026, 8, 15, 12, 0);
+        if (htmlSnippet == null) return LocalDateTime.of(2026, 8, 3, 12, 0);
 
         Matcher dtMatcher = DATETIME_TAG_PATTERN.matcher(htmlSnippet);
         if (dtMatcher.find()) {
@@ -232,11 +274,11 @@ public class StubContentExtractor implements ContentExtractor {
             } catch (Exception ignored) {}
         }
 
-        return LocalDateTime.of(2026, 8, 15, 12, 0);
+        return LocalDateTime.of(2026, 8, 3, 12, 0);
     }
 
     private void addIfValid(List<CreateExtractedPostDto> posts, CreateExtractedPostDto dto, String targetPageUrl) {
-        LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 15, 12, 0);
+        LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 3, 12, 0);
         if (postDate.isBefore(RANGE_START) || postDate.isAfter(RANGE_END)) {
             return;
         }

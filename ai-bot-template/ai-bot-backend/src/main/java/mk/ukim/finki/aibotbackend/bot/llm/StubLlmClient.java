@@ -144,75 +144,37 @@ public class StubLlmClient implements LlmClient {
 
         log.info("Automated crawler sequence step {} for target URL: {}", stepCount, targetUrl);
 
-        switch (stepCount) {
+        int cycle = stepCount % 3;
+        int pageIndex = stepCount / 3;
+
+        if (pageIndex >= 8) {
+            return new BotDecision(
+                new BotAction(BotActionType.FINISH, null, null, "Massive multi-page extraction completed successfully"),
+                true,
+                "Finished deep crawling across 8 pages of target category"
+            );
+        }
+
+        switch (cycle) {
             case 0:
+                String pagedUrl = buildPagedUrl(targetUrl, pageIndex);
                 return new BotDecision(
-                    new BotAction(BotActionType.NAVIGATE, targetUrl, null, "Navigating to target URL " + targetUrl),
+                    new BotAction(BotActionType.NAVIGATE, pagedUrl, null, "Navigating to feed page " + pageIndex),
                     false,
-                    "Step 1: Opening target category page"
+                    "Step " + (stepCount + 1) + ": Opening page " + pageIndex + " of category feed: " + pagedUrl
                 );
             case 1:
                 return new BotDecision(
-                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting clean articles from main category page"),
+                    new BotAction(BotActionType.SCROLL, null, null, "Scrolling down page " + pageIndex),
                     false,
-                    "Step 2: Extracting articles from page 1"
+                    "Step " + (stepCount + 1) + ": Scrolling down to load lazy article elements on page " + pageIndex
                 );
             case 2:
-                return new BotDecision(
-                    new BotAction(BotActionType.SCROLL, null, null, "Scrolling down category page"),
-                    false,
-                    "Step 3: Scrolling down to reveal more articles"
-                );
-            case 3:
-                return new BotDecision(
-                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting second batch of clean articles"),
-                    false,
-                    "Step 4: Extracting articles post-scroll"
-                );
-            case 4:
-                String page1Url = buildPagedUrl(targetUrl, 1);
-                return new BotDecision(
-                    new BotAction(BotActionType.NAVIGATE, page1Url, null, "Navigating to feed page 1"),
-                    false,
-                    "Step 5: Opening page 1 of category feed: " + page1Url
-                );
-            case 5:
-                return new BotDecision(
-                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 1"),
-                    false,
-                    "Step 6: Extracting articles from page 1"
-                );
-            case 6:
-                String page2Url = buildPagedUrl(targetUrl, 2);
-                return new BotDecision(
-                    new BotAction(BotActionType.NAVIGATE, page2Url, null, "Navigating to feed page 2"),
-                    false,
-                    "Step 7: Opening page 2 of category feed: " + page2Url
-                );
-            case 7:
-                return new BotDecision(
-                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 2"),
-                    false,
-                    "Step 8: Extracting articles from page 2"
-                );
-            case 8:
-                String page3Url = buildPagedUrl(targetUrl, 3);
-                return new BotDecision(
-                    new BotAction(BotActionType.NAVIGATE, page3Url, null, "Navigating to feed page 3"),
-                    false,
-                    "Step 9: Opening page 3 of category feed: " + page3Url
-                );
-            case 9:
-                return new BotDecision(
-                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 3"),
-                    false,
-                    "Step 10: Extracting articles from page 3"
-                );
             default:
                 return new BotDecision(
-                    new BotAction(BotActionType.FINISH, null, null, "Category feed extraction completed successfully"),
-                    true,
-                    "Finished multi-page extraction for target category"
+                    new BotAction(BotActionType.EXTRACT, null, null, "Deep extracting all full articles from page " + pageIndex),
+                    false,
+                    "Step " + (stepCount + 1) + ": Extracting all full articles from page " + pageIndex
                 );
         }
     }
@@ -246,7 +208,8 @@ public class StubLlmClient implements LlmClient {
     private String buildPrompt(PageSnapshot snapshot, String goal, List<BotAction> history) {
         StringBuilder sb = new StringBuilder();
         sb.append("You are an active AI Web Crawler Agent targeting Macedonian websites (Kajgana.mk, Forum Kajgana).\n");
-        sb.append("Goal: ").append(goal).append("\n\n");
+        sb.append("Goal: ").append(goal).append("\n");
+        sb.append("Target Date Window: August 1 to August 5, 2026. Extract a large volume of full news articles.\n\n");
         sb.append("Current Page URL: ").append(snapshot != null ? snapshot.url() : "unknown").append("\n");
         sb.append("Current Page DOM snippet:\n").append(truncateHtml(snapshot != null ? snapshot.domContent() : "")).append("\n\n");
 
@@ -256,11 +219,12 @@ public class StubLlmClient implements LlmClient {
             sb.append(i + 1).append(". ").append(a.type()).append(" -> ").append(a.target()).append(" (Reason: ").append(a.reasoning()).append(")\n");
         }
 
-        sb.append("\nINSTRUCTIONS:\n");
-        sb.append("- You are crawling news articles and forum threads.\n");
-        sb.append("- Do NOT set goalReached: true on step 1 or before executing EXTRACT actions on the page.\n");
-        sb.append("- Recommend actions: NAVIGATE, SCROLL, EXTRACT, FINISH.\n");
-        sb.append("- Return valid JSON matching schema with 'action', 'goalReached' (boolean), 'rationale' (string).\n");
+        sb.append("\nCRITICAL INSTRUCTIONS:\n");
+        sb.append("- You are crawling news articles and forum threads to collect a LARGE quantity of texts from 1-5 August 2026.\n");
+        sb.append("- You MUST cycle through pagination: ?page=0, ?page=1, ?page=2, ?page=3, ?page=4, ?page=5, etc.\n");
+        sb.append("- On each page, perform SCROLL and EXTRACT actions to deep-extract all articles.\n");
+        sb.append("- Do NOT set goalReached: true until at least 6-8 pages have been visited and extracted.\n");
+        sb.append("- Return valid JSON matching schema with 'action' (with 'type', 'target', 'value', 'reasoning'), 'goalReached' (boolean), 'rationale' (string).\n");
 
         return sb.toString();
     }
@@ -296,7 +260,7 @@ public class StubLlmClient implements LlmClient {
             log.error("Failed to parse JSON response from Gemini API: {}", e.getMessage(), e);
             return new BotDecision(
                 new BotAction(BotActionType.FINISH, null, null, "Parse error: " + e.getMessage()),
-                false, // Do NOT mark goal reached on parse error, let bot continue
+                false,
                 "Failed to parse LLM decision"
             );
         }
