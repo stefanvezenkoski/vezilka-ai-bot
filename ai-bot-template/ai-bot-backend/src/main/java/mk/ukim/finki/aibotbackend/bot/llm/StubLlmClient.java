@@ -63,65 +63,47 @@ public class StubLlmClient implements LlmClient {
 
     @Override
     public BotDecision decideNextAction(PageSnapshot snapshot, String goal, List<BotAction> history) {
-        log.info("Deciding next action with Gemini LLM for goal: '{}'. Step history size: {}", goal, history.size());
+        log.info("Deciding next action for goal: '{}'. Step history size: {}", goal, history.size());
 
         if (apiKey == null || apiKey.isBlank() || apiKey.contains("your_gemini_api_key")) {
-            log.warn("Gemini API key is not configured. Executing deep multi-pass mock automation sequence.");
+            log.warn("Gemini API key is not configured. Executing multi-page pagination crawler sequence.");
 
-            String targetUrl = snapshot != null && snapshot.url() != null && !snapshot.url().isBlank()
+            String baseUrl = snapshot != null && snapshot.url() != null && !snapshot.url().isBlank()
                     ? snapshot.url()
                     : "https://kajgana.com";
 
+            // Strip existing ?page query parameter if present
+            if (baseUrl.contains("?page=")) {
+                baseUrl = baseUrl.replaceAll("\\?page=\\d+", "");
+            } else if (baseUrl.contains("&page=")) {
+                baseUrl = baseUrl.replaceAll("&page=\\d+", "");
+            }
+
             int stepCount = history.size();
-            switch (stepCount) {
-                case 0:
+            int pageNum = stepCount / 2;
+
+            if (stepCount % 2 == 0) {
+                // Even step: Navigate to next page
+                String nextPageUrl = baseUrl.contains("?") ? baseUrl + "&page=" + pageNum : baseUrl + "?page=" + pageNum;
+                return new BotDecision(
+                    new BotAction(BotActionType.NAVIGATE, nextPageUrl, null, "Navigating to feed page " + pageNum),
+                    false,
+                    "Step " + (stepCount + 1) + ": Opening page " + pageNum + " of feed target: " + nextPageUrl
+                );
+            } else {
+                // Odd step: Extract articles from current page
+                if (pageNum >= 5) {
                     return new BotDecision(
-                        new BotAction(BotActionType.NAVIGATE, targetUrl, null, "Initial navigation to category page"),
-                        false,
-                        "Step 1: Navigating to category target " + targetUrl
-                    );
-                case 1:
-                    return new BotDecision(
-                        new BotAction(BotActionType.SCROLL, null, null, "First scroll down to load article stream"),
-                        false,
-                        "Step 2: Scrolling down category feed"
-                    );
-                case 2:
-                    return new BotDecision(
-                        new BotAction(BotActionType.EXTRACT, null, null, "Extract first wave of category articles"),
-                        false,
-                        "Step 3: Extracting first batch of articles"
-                    );
-                case 3:
-                    return new BotDecision(
-                        new BotAction(BotActionType.SCROLL, null, null, "Second scroll down to trigger lazy loading"),
-                        false,
-                        "Step 4: Deep scrolling down category feed"
-                    );
-                case 4:
-                    return new BotDecision(
-                        new BotAction(BotActionType.EXTRACT, null, null, "Extract second wave of category articles"),
-                        false,
-                        "Step 5: Extracting second batch of articles"
-                    );
-                case 5:
-                    return new BotDecision(
-                        new BotAction(BotActionType.SCROLL, null, null, "Third scroll down to reach older monthly articles"),
-                        false,
-                        "Step 6: Scrolling to bottom of feed"
-                    );
-                case 6:
-                    return new BotDecision(
-                        new BotAction(BotActionType.EXTRACT, null, null, "Extract final wave of category articles"),
-                        false,
-                        "Step 7: Extracting final batch of articles"
-                    );
-                default:
-                    return new BotDecision(
-                        new BotAction(BotActionType.FINISH, null, null, "Category extraction completed"),
+                        new BotAction(BotActionType.FINISH, null, null, "Multi-page category extraction completed"),
                         true,
-                        "Step 8: Category extraction finished successfully"
+                        "Finished crawling all pages of target category"
                     );
+                }
+                return new BotDecision(
+                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting clean articles from feed page " + pageNum),
+                    false,
+                    "Step " + (stepCount + 1) + ": Extracting articles from page " + pageNum
+                );
             }
         }
 

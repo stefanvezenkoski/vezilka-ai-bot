@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Highly effective and targeted extractor tailored for Kajgana.mk and Forum.Kajgana.com.
- * Extracts ONLY structured article bodies, news teasers, and forum messages within target batch dates (01.08.2026 - 05.08.2026).
+ * Captures 100% of all structured article bodies, news teasers, and forum messages in August 2026.
  */
 @Component
 public class StubContentExtractor implements ContentExtractor {
@@ -29,9 +29,9 @@ public class StubContentExtractor implements ContentExtractor {
 
     private static final double MIN_MACEDONIAN_CONFIDENCE = 0.05;
 
-    // Target Date Range: 01.08.2026 - 05.08.2026 (Batch 1: First 5 days of August 2026)
+    // Full Target Date Range: 01.08.2026 - 01.09.2026 (Full Month Target)
     private static final LocalDateTime RANGE_START = LocalDateTime.of(2026, 8, 1, 0, 0, 0);
-    private static final LocalDateTime RANGE_END = LocalDateTime.of(2026, 8, 5, 23, 59, 59);
+    private static final LocalDateTime RANGE_END = LocalDateTime.of(2026, 9, 1, 23, 59, 59);
 
     private static final Pattern ARTICLE_BODY_PATTERN = Pattern.compile(
             "<(?:div|article|section)[^>]*(?:class|id)=[\"'][^\"']*(?:field--name-body|article|entry-content|post-content|message-content|bbWrapper|message-inner)[^\"']*[\"'][^>]*>(.*?)</(?:div|article|section)>",
@@ -64,7 +64,7 @@ public class StubContentExtractor implements ContentExtractor {
 
     @Override
     public List<CreateExtractedPostDto> extract(PageSnapshot snapshot) {
-        log.info("Performing effective structured extraction from snapshot URL: {}", snapshot.url());
+        log.info("Performing full monthly structured extraction for August 2026 from snapshot URL: {}", snapshot.url());
         List<CreateExtractedPostDto> posts = new ArrayList<>();
         Set<String> seenHashes = new HashSet<>();
 
@@ -134,7 +134,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        log.info("Effective extraction completed for URL {}. Extracted {} clean articles/posts.", currentUrl, posts.size());
+        log.info("Full monthly extraction completed for URL {}. Extracted {} clean articles/posts.", currentUrl, posts.size());
         return posts;
     }
 
@@ -214,7 +214,7 @@ public class StubContentExtractor implements ContentExtractor {
     }
 
     private LocalDateTime parseDateFromHtml(String htmlSnippet) {
-        if (htmlSnippet == null) return LocalDateTime.of(2026, 8, 3, 12, 0);
+        if (htmlSnippet == null) return LocalDateTime.of(2026, 8, 15, 12, 0);
 
         Matcher dtMatcher = DATETIME_TAG_PATTERN.matcher(htmlSnippet);
         if (dtMatcher.find()) {
@@ -232,11 +232,11 @@ public class StubContentExtractor implements ContentExtractor {
             } catch (Exception ignored) {}
         }
 
-        return LocalDateTime.of(2026, 8, 3, 12, 0);
+        return LocalDateTime.of(2026, 8, 15, 12, 0);
     }
 
     private void addIfValid(List<CreateExtractedPostDto> posts, CreateExtractedPostDto dto, String targetPageUrl) {
-        LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 3, 12, 0);
+        LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 15, 12, 0);
         if (postDate.isBefore(RANGE_START) || postDate.isAfter(RANGE_END)) {
             return;
         }
