@@ -20,8 +20,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Extractor backed by comprehensive DOM parsing tailored for Kajgana.mk and Forum.Kajgana.com.
- * Captures ABSOLUTELY EVERY post, article body, forum comment, headline, and paragraph
- * published in the target period (01.08.2026 - 01.09.2026).
+ * Configured for Batch 1: First 5 days of August (01.08.2026 - 05.08.2026).
  */
 @Component
 public class StubContentExtractor implements ContentExtractor {
@@ -31,9 +30,9 @@ public class StubContentExtractor implements ContentExtractor {
     // Permissive confidence threshold (0.05) to ensure NO valid post is discarded
     private static final double MIN_MACEDONIAN_CONFIDENCE = 0.05;
 
-    // Target Date Range: 01.08.2026 - 01.09.2026
+    // Target Date Range: 01.08.2026 - 05.08.2026 (Batch 1: First 5 days of August 2026)
     private static final LocalDateTime RANGE_START = LocalDateTime.of(2026, 8, 1, 0, 0, 0);
-    private static final LocalDateTime RANGE_END = LocalDateTime.of(2026, 9, 1, 23, 59, 59);
+    private static final LocalDateTime RANGE_END = LocalDateTime.of(2026, 8, 5, 23, 59, 59);
 
     private static final Pattern ARTICLE_BODY_PATTERN = Pattern.compile(
             "<(?:div|article|section)[^>]*(?:class|id)=[\"'][^\"']*(?:field--name-body|article|entry-content|post-content|message-content|bbWrapper|message-inner)[^\"']*[\"'][^>]*>(.*?)</(?:div|article|section)>",
@@ -50,7 +49,6 @@ public class StubContentExtractor implements ContentExtractor {
             Pattern.DOTALL | Pattern.CASE_INSENSITIVE
     );
 
-    private static final Pattern H1_TITLE_PATTERN = Pattern.compile("<h1[^>]*>(.*?)</h1>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
     private static final Pattern TITLE_PATTERN = Pattern.compile("<h[1-6][^>]*>(.*?)</h[1-6]>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
     private static final Pattern PARAGRAPH_PATTERN = Pattern.compile("<(?:p|div|span|li)[^>]*>(.*?)</(?:p|div|span|li)>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
     private static final Pattern IMG_PATTERN = Pattern.compile("<img[^>]+src=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
@@ -67,7 +65,7 @@ public class StubContentExtractor implements ContentExtractor {
 
     @Override
     public List<CreateExtractedPostDto> extract(PageSnapshot snapshot) {
-        log.info("Performing exhaustive extraction for August 2026 from snapshot URL: {}", snapshot.url());
+        log.info("Performing extraction for August 1-5, 2026 from snapshot URL: {}", snapshot.url());
         List<CreateExtractedPostDto> posts = new ArrayList<>();
         Set<String> seenHashes = new HashSet<>();
 
@@ -101,7 +99,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 2. Forum Post & Comment Messages (XenForo forum.kajgana.com)
+        // 2. Forum Post & Comment Messages
         Matcher forumMatcher = FORUM_MESSAGE_PATTERN.matcher(html);
         while (forumMatcher.find()) {
             String messageHtml = forumMatcher.group(1);
@@ -137,7 +135,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 4. Headings (h1-h6) + Paragraph/Text Blocks
+        // 4. Headings + Paragraph Text Blocks
         Pattern hpPattern = Pattern.compile(
                 "<(h[1-6])[^>]*>(.*?)</\\1>(?:\\s*<(?:p|div|span|li)[^>]*>(.*?)</(?:p|div|span|li)>)?",
                 Pattern.DOTALL | Pattern.CASE_INSENSITIVE
@@ -164,7 +162,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 5. Every individual text paragraph / container (length >= 15)
+        // 5. Individual text paragraphs
         Matcher pMatcher = PARAGRAPH_PATTERN.matcher(html);
         while (pMatcher.find()) {
             String pText = stripHtml(pMatcher.group(1));
@@ -185,7 +183,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 6. Anchor links with descriptive text (e.g. article links)
+        // 6. Anchor links with descriptive text
         Matcher aMatcher = A_HREF_PATTERN.matcher(html);
         while (aMatcher.find()) {
             String href = aMatcher.group(1);
@@ -208,7 +206,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        log.info("Exhaustive extraction completed. Extracted {} total posts/texts for August 2026 from URL: {}", posts.size(), currentUrl);
+        log.info("Extraction for August 1-5 completed. Extracted {} posts/texts from URL: {}", posts.size(), currentUrl);
         return posts;
     }
 
@@ -288,7 +286,7 @@ public class StubContentExtractor implements ContentExtractor {
     }
 
     private LocalDateTime parseDateFromHtml(String htmlSnippet) {
-        if (htmlSnippet == null) return LocalDateTime.of(2026, 8, 15, 12, 0);
+        if (htmlSnippet == null) return LocalDateTime.of(2026, 8, 3, 12, 0);
 
         Matcher dtMatcher = DATETIME_TAG_PATTERN.matcher(htmlSnippet);
         if (dtMatcher.find()) {
@@ -306,12 +304,12 @@ public class StubContentExtractor implements ContentExtractor {
             } catch (Exception ignored) {}
         }
 
-        // Default timestamp within August 2026
-        return LocalDateTime.of(2026, 8, 15, 12, 0);
+        // Default timestamp within August 1-5, 2026
+        return LocalDateTime.of(2026, 8, 3, 12, 0);
     }
 
     private void addIfValid(List<CreateExtractedPostDto> posts, CreateExtractedPostDto dto) {
-        LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 15, 12, 0);
+        LocalDateTime postDate = dto.postedAt() != null ? dto.postedAt() : LocalDateTime.of(2026, 8, 3, 12, 0);
         if (postDate.isBefore(RANGE_START) || postDate.isAfter(RANGE_END)) {
             return;
         }
