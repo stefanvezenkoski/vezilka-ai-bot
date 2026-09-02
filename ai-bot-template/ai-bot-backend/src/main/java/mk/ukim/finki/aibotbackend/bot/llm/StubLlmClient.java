@@ -46,7 +46,7 @@ public class StubLlmClient implements LlmClient {
             );
 
             Map<?, ?> response = restClient.post()
-                    .uri("/v1beta/models/gemini-1.5-flash:generateContent?key={key}", apiKey)
+                    .uri("/v1beta/models/gemini-3.6-flash:generateContent?key={key}", apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(requestBody)
                     .retrieve()
@@ -66,9 +66,10 @@ public class StubLlmClient implements LlmClient {
 
     @Override
     public BotDecision decideNextAction(PageSnapshot snapshot, String goal, List<BotAction> history) {
-        log.info("Deciding next action for goal: '{}'. Step history size: {}", goal, history.size());
+        log.info("Deciding next action via Google Gemini AI for goal: '{}'. Step history size: {}", goal, history.size());
 
         if (apiKey == null || apiKey.isBlank() || isPlaceholderKey(apiKey)) {
+            log.info("Gemini API key is not active. Using automated sequence.");
             return decideMockNextAction(goal, history);
         }
 
@@ -102,16 +103,20 @@ public class StubLlmClient implements LlmClient {
                 )
             );
 
+            log.info("Querying Google Gemini 3.6 Flash AI endpoint...");
             Map<?, ?> response = restClient.post()
-                    .uri("/v1beta/models/gemini-1.5-flash:generateContent?key={key}", apiKey)
+                    .uri("/v1beta/models/gemini-3.6-flash:generateContent?key={key}", apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(requestBody)
                     .retrieve()
                     .body(Map.class);
 
-            return parseGeminiResponse(response);
+            BotDecision decision = parseGeminiResponse(response);
+            log.info("Gemini AI Decision: action={}, goalReached={}, rationale='{}'", 
+                    decision.action().type(), decision.goalReached(), decision.rationale());
+            return decision;
         } catch (Exception e) {
-            log.warn("Gemini API request failed ({}). Continuing extraction with automated multi-page crawler...", e.getMessage());
+            log.error("Failed to query Gemini API; continuing with deterministic extraction", e);
             return decideMockNextAction(goal, history);
         }
     }
@@ -198,7 +203,7 @@ public class StubLlmClient implements LlmClient {
     private boolean isPlaceholderKey(String key) {
         if (key == null) return true;
         String lower = key.toLowerCase();
-        return lower.contains("your_gemini_api_key") || lower.contains("твојот") || lower.contains("kljuc") || lower.contains("key");
+        return lower.contains("your_gemini_api_key") || lower.contains("твојот") || lower.contains("kljuc");
     }
 
     private String extractUrlFromGoal(String goal) {
