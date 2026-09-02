@@ -8,8 +8,10 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ExtractedPostRepository
     extends JpaRepository<ExtractedPost, Long>, JpaSpecificationExecutor<ExtractedPost> {
-    
+
     boolean existsBySessionIdAndSourceUrl(Long sessionId, String sourceUrl);
+
+    boolean existsBySessionIdAndContent(Long sessionId, String content);
 
     boolean existsByContent(String content);
 }

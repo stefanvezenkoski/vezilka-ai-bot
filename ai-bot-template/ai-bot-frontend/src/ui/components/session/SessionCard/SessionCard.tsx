@@ -2,6 +2,7 @@ import { Box, Button, Card, CardActions, CardContent, Chip, Typography } from '@
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import InfoIcon from '@mui/icons-material/Info';
+import ArticleIcon from '@mui/icons-material/Article';
 import { useNavigate } from 'react-router';
 import type { SessionResponse } from '../../../../api/types/session.ts';
 import useSessions from '../../../../hooks/useSessions.ts';
@@ -60,14 +61,24 @@ const SessionCard = ({ session }: SessionCardProps) => {
         )}
       </CardContent>
 
-      <CardActions sx={{ justifyContent: 'space-between', p: 2, pt: 0 }}>
-        <Button
-          size='small'
-          startIcon={<InfoIcon />}
-          onClick={() => navigate(`/sessions/${session.id}`)}
-        >
-          Info
-        </Button>
+      <CardActions sx={{ justifyContent: 'space-between', p: 2, pt: 0, flexWrap: 'wrap', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Button
+            size='small'
+            startIcon={<InfoIcon />}
+            onClick={() => navigate(`/sessions/${session.id}`)}
+          >
+            Info
+          </Button>
+          <Button
+            size='small'
+            startIcon={<ArticleIcon />}
+            color='secondary'
+            onClick={() => navigate(`/posts?sessionId=${session.id}`)}
+          >
+            Posts
+          </Button>
+        </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
             size='small'

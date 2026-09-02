@@ -32,8 +32,12 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
 
     @Override
     public Page<ExtractedPost> findAll(PostFilterDto filter, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "postedAt"));
-        
+        Pageable pageable = PageRequest.of(
+            page,
+            size,
+            Sort.by(Sort.Order.desc("postedAt").nullsLast(), Sort.Order.desc("id"))
+        );
+
         Specification<ExtractedPost> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
@@ -79,36 +83,6 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
         return extractedPostRepository.findAllById(ids);
     }
 
-    @jakarta.annotation.PostConstruct
-    public void cleanupExistingDuplicates() {
-        try {
-            List<ExtractedPost> allPosts = extractedPostRepository.findAll();
-            if (allPosts.isEmpty()) return;
-
-            Set<String> seenContent = new HashSet<>();
-            List<Long> duplicateIds = new ArrayList<>();
-
-            for (ExtractedPost post : allPosts) {
-                String contentKey = post.getContent() != null ? post.getContent().trim() : "";
-                if (contentKey.isBlank()) continue;
-
-                if (seenContent.contains(contentKey)) {
-                    duplicateIds.add(post.getId());
-                } else {
-                    seenContent.add(contentKey);
-                }
-            }
-
-            if (!duplicateIds.isEmpty()) {
-                log.info("Cleaning up {} duplicate posts from database...", duplicateIds.size());
-                extractedPostRepository.deleteAllById(duplicateIds);
-                log.info("Database duplicate post cleanup complete.");
-            }
-        } catch (Exception e) {
-            log.warn("Failed to execute automatic duplicate post cleanup", e);
-        }
-    }
-
     @Override
     public List<ExtractedPost> saveAll(List<ExtractedPost> posts) {
         if (posts == null || posts.isEmpty()) {
@@ -116,15 +90,20 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
         }
 
         List<ExtractedPost> uniqueToSave = new ArrayList<>();
-        java.util.Set<String> seenContentInBatch = new java.util.HashSet<>();
+        Set<String> seenContentInBatch = new HashSet<>();
 
         for (ExtractedPost post : posts) {
             String content = post.getContent() != null ? post.getContent().trim() : "";
-            if (content.isBlank()) {
+            if (content.isBlank() || isBoilerplateText(content)) {
                 continue;
             }
 
-            if (!seenContentInBatch.contains(content) && !extractedPostRepository.existsByContent(content)) {
+            Long sessionId = post.getSession() != null ? post.getSession().getId() : null;
+
+            boolean existsInSession = sessionId != null &&
+                    extractedPostRepository.existsBySessionIdAndContent(sessionId, content);
+
+            if (!seenContentInBatch.contains(content) && !existsInSession) {
                 seenContentInBatch.add(content);
                 uniqueToSave.add(post);
             }
@@ -134,7 +113,23 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
             return List.of();
         }
 
+        log.info("Saving {} new extracted posts to database...", uniqueToSave.size());
         return extractedPostRepository.saveAll(uniqueToSave);
+    }
+
+    private boolean isBoilerplateText(String text) {
+        if (text == null) return true;
+        String lower = text.toLowerCase();
+        return lower.contains("featured main menu") ||
+               lower.contains("header top menu") ||
+               lower.contains("main navigation") ||
+               lower.contains("footerуслови за користење") ||
+               lower.contains("сите права задржани") ||
+               lower.equals("вести") ||
+               lower.equals("спорт") ||
+               lower.equals("магазин") ||
+               lower.equals("форум") ||
+               lower.equals("читај повеќе");
     }
 
     @Override
