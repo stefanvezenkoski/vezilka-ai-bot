@@ -19,8 +19,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Extractor backed by comprehensive DOM parsing tailored for Kajgana.mk and Forum.Kajgana.com.
- * Strictly scopes extraction to the active target category path and batch date window (01.08.2026 - 05.08.2026).
+ * Highly effective and targeted extractor tailored for Kajgana.mk and Forum.Kajgana.com.
+ * Extracts ONLY structured article bodies, news teasers, and forum messages within target batch dates (01.08.2026 - 05.08.2026).
  */
 @Component
 public class StubContentExtractor implements ContentExtractor {
@@ -44,7 +44,7 @@ public class StubContentExtractor implements ContentExtractor {
     );
 
     private static final Pattern TEASER_BLOCK_PATTERN = Pattern.compile(
-            "<(?:div|article|section)[^>]*(?:class|id)=[\"'][^\"']*(?:teaser|node|card|article|story|item|views-row|message|post|thread)[^\"']*[\"'][^>]*>(.*?)</(?:div|article|section)>",
+            "<(?:div|article|section)[^>]*(?:class|id)=[\"'][^\"']*(?:teaser|node|card|article|story|item|views-row)[^\"']*[\"'][^>]*>(.*?)</(?:div|article|section)>",
             Pattern.DOTALL | Pattern.CASE_INSENSITIVE
     );
 
@@ -64,7 +64,7 @@ public class StubContentExtractor implements ContentExtractor {
 
     @Override
     public List<CreateExtractedPostDto> extract(PageSnapshot snapshot) {
-        log.info("Performing strictly scoped extraction for August 1-5 from snapshot URL: {}", snapshot.url());
+        log.info("Performing effective structured extraction from snapshot URL: {}", snapshot.url());
         List<CreateExtractedPostDto> posts = new ArrayList<>();
         Set<String> seenHashes = new HashSet<>();
 
@@ -76,12 +76,12 @@ public class StubContentExtractor implements ContentExtractor {
         String currentUrl = snapshot.url() != null && !snapshot.url().isBlank() ? snapshot.url() : "https://kajgana.com";
         LocalDateTime defaultDate = parseDateFromHtml(html);
 
-        // 1. Full Article & Forum Body Extraction
+        // 1. Full Article Bodies
         Matcher articleMatcher = ARTICLE_BODY_PATTERN.matcher(html);
         while (articleMatcher.find()) {
             String bodyHtml = articleMatcher.group(1);
             String textContent = stripHtml(bodyHtml);
-            if (textContent.length() >= 15) {
+            if (textContent.length() >= 30) {
                 String hashKey = currentUrl + "::" + textContent.hashCode();
                 if (!seenHashes.contains(hashKey)) {
                     seenHashes.add(hashKey);
@@ -98,12 +98,12 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 2. Forum Post & Comment Messages
+        // 2. Forum Post Messages (XenForo)
         Matcher forumMatcher = FORUM_MESSAGE_PATTERN.matcher(html);
         while (forumMatcher.find()) {
             String messageHtml = forumMatcher.group(1);
             String textContent = stripHtml(messageHtml);
-            if (textContent.length() >= 15) {
+            if (textContent.length() >= 20) {
                 String hashKey = currentUrl + "::" + textContent.hashCode();
                 if (!seenHashes.contains(hashKey)) {
                     seenHashes.add(hashKey);
@@ -120,12 +120,12 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 3. Teaser Cards & Block Elements
+        // 3. Structured News Teaser Cards
         Matcher teaserMatcher = TEASER_BLOCK_PATTERN.matcher(html);
         while (teaserMatcher.find()) {
             String blockHtml = teaserMatcher.group(1);
             CreateExtractedPostDto dto = parseBlock(blockHtml, currentUrl);
-            if (dto != null && dto.content() != null && dto.content().length() >= 10) {
+            if (dto != null && dto.content() != null && dto.content().length() >= 20) {
                 String hashKey = dto.sourceUrl() + "::" + dto.content().hashCode();
                 if (!seenHashes.contains(hashKey)) {
                     seenHashes.add(hashKey);
@@ -134,57 +134,7 @@ public class StubContentExtractor implements ContentExtractor {
             }
         }
 
-        // 4. Headings + Paragraph Text Blocks
-        Pattern hpPattern = Pattern.compile(
-                "<(h[1-6])[^>]*>(.*?)</\\1>(?:\\s*<(?:p|div|span|li)[^>]*>(.*?)</(?:p|div|span|li)>)?",
-                Pattern.DOTALL | Pattern.CASE_INSENSITIVE
-        );
-        Matcher hpMatcher = hpPattern.matcher(html);
-        while (hpMatcher.find()) {
-            String headingText = stripHtml(hpMatcher.group(2));
-            String pText = hpMatcher.group(3) != null ? stripHtml(hpMatcher.group(3)) : "";
-            if (headingText.length() >= 5) {
-                String fullContent = headingText + (!pText.isBlank() ? "\n\n" + pText : "");
-                String hashKey = currentUrl + "::" + fullContent.hashCode();
-                if (!seenHashes.contains(hashKey)) {
-                    seenHashes.add(hashKey);
-                    addIfValid(posts, new CreateExtractedPostDto(
-                            null,
-                            "Кајгана",
-                            fullContent,
-                            currentUrl,
-                            defaultDate,
-                            null,
-                            List.of()
-                    ), currentUrl);
-                }
-            }
-        }
-
-        // 5. Anchor links matching active target category path
-        Matcher aMatcher = A_HREF_PATTERN.matcher(html);
-        while (aMatcher.find()) {
-            String href = aMatcher.group(1);
-            String linkText = stripHtml(aMatcher.group(2));
-            if (linkText.length() >= 10 && !href.startsWith("#") && !href.startsWith("javascript:")) {
-                String fullUrl = resolveUrl(currentUrl, href);
-                String hashKey = fullUrl + "::" + linkText.hashCode();
-                if (!seenHashes.contains(hashKey)) {
-                    seenHashes.add(hashKey);
-                    addIfValid(posts, new CreateExtractedPostDto(
-                            null,
-                            "Кајгана",
-                            linkText,
-                            fullUrl,
-                            defaultDate,
-                            null,
-                            List.of()
-                    ), currentUrl);
-                }
-            }
-        }
-
-        log.info("Extraction completed for URL {}. Extracted {} strictly scoped posts/texts.", currentUrl, posts.size());
+        log.info("Effective extraction completed for URL {}. Extracted {} clean articles/posts.", currentUrl, posts.size());
         return posts;
     }
 
@@ -203,7 +153,7 @@ public class StubContentExtractor implements ContentExtractor {
         Matcher pMatcher = PARAGRAPH_PATTERN.matcher(blockHtml);
         while (pMatcher.find()) {
             String text = stripHtml(pMatcher.group(1));
-            if (!text.isBlank() && !text.equals(title) && text.length() >= 5) {
+            if (!text.isBlank() && !text.equals(title) && text.length() >= 10) {
                 contentBuilder.append(text).append("\n\n");
             }
         }
@@ -213,7 +163,7 @@ public class StubContentExtractor implements ContentExtractor {
             contentText = stripHtml(blockHtml);
         }
 
-        if (contentText.length() < 10) {
+        if (contentText.length() < 20) {
             return null;
         }
 
