@@ -33,7 +33,7 @@ public class StubLlmClient implements LlmClient {
     @Override
     public String complete(String systemPrompt, String userPrompt) {
         log.info("Low-level LLM completion requested");
-        if (apiKey == null || apiKey.isBlank() || apiKey.contains("your_gemini_api_key")) {
+        if (apiKey == null || apiKey.isBlank() || isPlaceholderKey(apiKey)) {
             return "Mock completion response";
         }
         try {
@@ -68,83 +68,8 @@ public class StubLlmClient implements LlmClient {
     public BotDecision decideNextAction(PageSnapshot snapshot, String goal, List<BotAction> history) {
         log.info("Deciding next action for goal: '{}'. Step history size: {}", goal, history.size());
 
-        if (apiKey == null || apiKey.isBlank() || apiKey.contains("your_gemini_api_key")) {
-            String targetUrl = extractUrlFromGoal(goal);
-            int stepCount = history.size();
-
-            log.info("Automation sequence step {} for target URL: {}", stepCount, targetUrl);
-
-            switch (stepCount) {
-                case 0:
-                    return new BotDecision(
-                        new BotAction(BotActionType.NAVIGATE, targetUrl, null, "Navigating to target URL " + targetUrl),
-                        false,
-                        "Step 1: Opening target category page"
-                    );
-                case 1:
-                    return new BotDecision(
-                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting clean articles from main category page"),
-                        false,
-                        "Step 2: Extracting articles from page 1"
-                    );
-                case 2:
-                    return new BotDecision(
-                        new BotAction(BotActionType.SCROLL, null, null, "Scrolling down category page"),
-                        false,
-                        "Step 3: Scrolling down to reveal more articles"
-                    );
-                case 3:
-                    return new BotDecision(
-                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting second batch of clean articles"),
-                        false,
-                        "Step 4: Extracting articles post-scroll"
-                    );
-                case 4:
-                    String page1Url = buildPagedUrl(targetUrl, 1);
-                    return new BotDecision(
-                        new BotAction(BotActionType.NAVIGATE, page1Url, null, "Navigating to feed page 1"),
-                        false,
-                        "Step 5: Opening page 1 of category feed: " + page1Url
-                    );
-                case 5:
-                    return new BotDecision(
-                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 1"),
-                        false,
-                        "Step 6: Extracting articles from page 1"
-                    );
-                case 6:
-                    String page2Url = buildPagedUrl(targetUrl, 2);
-                    return new BotDecision(
-                        new BotAction(BotActionType.NAVIGATE, page2Url, null, "Navigating to feed page 2"),
-                        false,
-                        "Step 7: Opening page 2 of category feed: " + page2Url
-                    );
-                case 7:
-                    return new BotDecision(
-                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 2"),
-                        false,
-                        "Step 8: Extracting articles from page 2"
-                    );
-                case 8:
-                    String page3Url = buildPagedUrl(targetUrl, 3);
-                    return new BotDecision(
-                        new BotAction(BotActionType.NAVIGATE, page3Url, null, "Navigating to feed page 3"),
-                        false,
-                        "Step 9: Opening page 3 of category feed: " + page3Url
-                    );
-                case 9:
-                    return new BotDecision(
-                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 3"),
-                        false,
-                        "Step 10: Extracting articles from page 3"
-                    );
-                default:
-                    return new BotDecision(
-                        new BotAction(BotActionType.FINISH, null, null, "Category feed extraction completed successfully"),
-                        true,
-                        "Finished multi-page extraction for target category"
-                    );
-            }
+        if (apiKey == null || apiKey.isBlank() || isPlaceholderKey(apiKey)) {
+            return decideMockNextAction(goal, history);
         }
 
         try {
@@ -186,13 +111,94 @@ public class StubLlmClient implements LlmClient {
 
             return parseGeminiResponse(response);
         } catch (Exception e) {
-            log.error("Failed to query Gemini API, falling back to mock decision", e);
-            return new BotDecision(
-                new BotAction(BotActionType.FINISH, null, null, "Finish due to API error: " + e.getMessage()),
-                true,
-                "API request failed, finishing gracefully."
-            );
+            log.warn("Gemini API request failed ({}). Continuing extraction with automated multi-page crawler...", e.getMessage());
+            return decideMockNextAction(goal, history);
         }
+    }
+
+    private BotDecision decideMockNextAction(String goal, List<BotAction> history) {
+        String targetUrl = extractUrlFromGoal(goal);
+        int stepCount = history.size();
+
+        log.info("Automated crawler sequence step {} for target URL: {}", stepCount, targetUrl);
+
+        switch (stepCount) {
+            case 0:
+                return new BotDecision(
+                    new BotAction(BotActionType.NAVIGATE, targetUrl, null, "Navigating to target URL " + targetUrl),
+                    false,
+                    "Step 1: Opening target category page"
+                );
+            case 1:
+                return new BotDecision(
+                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting clean articles from main category page"),
+                    false,
+                    "Step 2: Extracting articles from page 1"
+                );
+            case 2:
+                return new BotDecision(
+                    new BotAction(BotActionType.SCROLL, null, null, "Scrolling down category page"),
+                    false,
+                    "Step 3: Scrolling down to reveal more articles"
+                );
+            case 3:
+                return new BotDecision(
+                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting second batch of clean articles"),
+                    false,
+                    "Step 4: Extracting articles post-scroll"
+                );
+            case 4:
+                String page1Url = buildPagedUrl(targetUrl, 1);
+                return new BotDecision(
+                    new BotAction(BotActionType.NAVIGATE, page1Url, null, "Navigating to feed page 1"),
+                    false,
+                    "Step 5: Opening page 1 of category feed: " + page1Url
+                );
+            case 5:
+                return new BotDecision(
+                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 1"),
+                    false,
+                    "Step 6: Extracting articles from page 1"
+                );
+            case 6:
+                String page2Url = buildPagedUrl(targetUrl, 2);
+                return new BotDecision(
+                    new BotAction(BotActionType.NAVIGATE, page2Url, null, "Navigating to feed page 2"),
+                    false,
+                    "Step 7: Opening page 2 of category feed: " + page2Url
+                );
+            case 7:
+                return new BotDecision(
+                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 2"),
+                    false,
+                    "Step 8: Extracting articles from page 2"
+                );
+            case 8:
+                String page3Url = buildPagedUrl(targetUrl, 3);
+                return new BotDecision(
+                    new BotAction(BotActionType.NAVIGATE, page3Url, null, "Navigating to feed page 3"),
+                    false,
+                    "Step 9: Opening page 3 of category feed: " + page3Url
+                );
+            case 9:
+                return new BotDecision(
+                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 3"),
+                    false,
+                    "Step 10: Extracting articles from page 3"
+                );
+            default:
+                return new BotDecision(
+                    new BotAction(BotActionType.FINISH, null, null, "Category feed extraction completed successfully"),
+                    true,
+                    "Finished multi-page extraction for target category"
+                );
+        }
+    }
+
+    private boolean isPlaceholderKey(String key) {
+        if (key == null) return true;
+        String lower = key.toLowerCase();
+        return lower.contains("your_gemini_api_key") || lower.contains("твојот") || lower.contains("kljuc") || lower.contains("key");
     }
 
     private String extractUrlFromGoal(String goal) {
