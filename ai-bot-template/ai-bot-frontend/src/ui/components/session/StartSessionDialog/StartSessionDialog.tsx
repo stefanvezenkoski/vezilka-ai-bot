@@ -25,20 +25,36 @@ interface StartSessionDialogProps {
   onClose: () => void;
 }
 
+const KAJGANA_MAIN_URLS = [
+  { label: 'Вести Македонија (kajgana.com/vesti/makedonija)', value: 'https://kajgana.com/vesti/makedonija' },
+  { label: 'Вести Свет (kajgana.com/vesti/svet)', value: 'https://kajgana.com/vesti/svet' },
+  { label: 'Спорт (kajgana.com/sport)', value: 'https://kajgana.com/sport' },
+  { label: 'Магазин (kajgana.com/magazin)', value: 'https://kajgana.com/magazin' },
+  { label: 'Сцена & Култура (kajgana.com/scena)', value: 'https://kajgana.com/scena' },
+  { label: 'Наука & Технологија (kajgana.com/nauka-i-tehnologija)', value: 'https://kajgana.com/nauka-i-tehnologija' },
+  { label: 'Кајгана Форум (forum.kajgana.com)', value: 'https://forum.kajgana.com' },
+  { label: 'Почетна Страна (kajgana.com)', value: 'https://kajgana.com' },
+  { label: 'Custom URL...', value: 'CUSTOM' }
+];
+
 const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
   const { onCreate } = useSessions();
   const [socialNetwork, setSocialNetwork] = useState<SocialNetwork>('KAJGANA');
   const [description, setDescription] = useState<string>('');
   const [targets, setTargets] = useState<CreateTargetRequest[]>([
-    { type: 'FEED_URL', value: 'https://forum.kajgana.com' }
+    { type: 'FEED_URL', value: 'https://kajgana.com/vesti/makedonija' }
   ]);
+  const [customUrls, setCustomUrls] = useState<{ [key: number]: string }>({});
 
   const handleAddTarget = () => {
-    setTargets([...targets, { type: 'KEYWORD', value: '' }]);
+    setTargets([...targets, { type: 'FEED_URL', value: 'https://kajgana.com/vesti/makedonija' }]);
   };
 
   const handleRemoveTarget = (index: number) => {
     setTargets(targets.filter((_, i) => i !== index));
+    const updatedCustom = { ...customUrls };
+    delete updatedCustom[index];
+    setCustomUrls(updatedCustom);
   };
 
   const handleTargetChange = (index: number, field: keyof CreateTargetRequest, val: string) => {
@@ -62,10 +78,17 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
 
   const handleSubmit = async () => {
     try {
+      const finalTargets = targets.map((t, idx) => {
+        if (t.type === 'FEED_URL' && t.value === 'CUSTOM') {
+          return { ...t, value: customUrls[idx] || 'https://kajgana.com' };
+        }
+        return t;
+      }).filter(t => t.value.trim() !== '');
+
       await onCreate({
         socialNetwork,
         description,
-        targets: targets.filter(t => t.value.trim() !== '')
+        targets: finalTargets
       });
       onClose();
     } catch (error) {
@@ -94,7 +117,7 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
           fullWidth
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder='e.g., Extract sports discussions from Kajgana forum'
+          placeholder='e.g., Extract news from Kajgana Macedonia section'
         />
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -108,12 +131,12 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
             startIcon={<FlashOnIcon />}
             onClick={handleLoadAllCategories}
           >
-            Load All Kajgana Categories
+            Load All Categories
           </Button>
         </Box>
 
         {targets.map((target, index) => (
-          <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
+          <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
             <FormControl sx={{ minWidth: 140 }}>
               <InputLabel size='small'>Target Type</InputLabel>
               <Select
@@ -128,14 +151,48 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
                 <MenuItem value='PROFILE'>Profile</MenuItem>
               </Select>
             </FormControl>
-            <TextField
-              size='small'
-              fullWidth
-              label='Value'
-              value={target.value}
-              onChange={(e) => handleTargetChange(index, 'value', e.target.value)}
-              placeholder='e.g. https://forum.kajgana.com or спорт'
-            />
+
+            {target.type === 'FEED_URL' ? (
+              <FormControl sx={{ flexGrow: 1, minWidth: 240 }} size='small'>
+                <InputLabel>Select Target URL</InputLabel>
+                <Select
+                  value={KAJGANA_MAIN_URLS.some(u => u.value === target.value) ? target.value : 'CUSTOM'}
+                  label='Select Target URL'
+                  onChange={(e) => {
+                    const selectedVal = e.target.value;
+                    handleTargetChange(index, 'value', selectedVal);
+                  }}
+                >
+                  {KAJGANA_MAIN_URLS.map((urlItem) => (
+                    <MenuItem key={urlItem.value} value={urlItem.value}>
+                      {urlItem.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                size='small'
+                sx={{ flexGrow: 1 }}
+                label='Value'
+                value={target.value}
+                onChange={(e) => handleTargetChange(index, 'value', e.target.value)}
+                placeholder='e.g. спорт'
+              />
+            )}
+
+            {target.type === 'FEED_URL' && (target.value === 'CUSTOM' || !KAJGANA_MAIN_URLS.some(u => u.value === target.value)) && (
+              <TextField
+                size='small'
+                fullWidth
+                label='Custom URL'
+                value={customUrls[index] || ''}
+                onChange={(e) => setCustomUrls({ ...customUrls, [index]: e.target.value })}
+                placeholder='https://kajgana.com/custom-section'
+                sx={{ mt: 1 }}
+              />
+            )}
+
             {targets.length > 1 && (
               <IconButton color='error' onClick={() => handleRemoveTarget(index)}>
                 <DeleteIcon />
@@ -143,10 +200,12 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
             )}
           </Box>
         ))}
+
         <Button startIcon={<AddIcon />} variant='outlined' size='small' onClick={handleAddTarget}>
           Add Target
         </Button>
       </DialogContent>
+
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
         <Button variant='contained' onClick={handleSubmit} disabled={targets.length === 0}>
