@@ -1,5 +1,7 @@
 package mk.ukim.finki.aibotbackend.bot.llm;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -23,11 +25,14 @@ public class StubLlmClient implements LlmClient {
     private String apiKey;
 
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
 
     public StubLlmClient() {
         this.restClient = RestClient.builder()
                 .baseUrl("https://generativelanguage.googleapis.com")
                 .build();
+        this.objectMapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     @Override
@@ -68,6 +73,18 @@ public class StubLlmClient implements LlmClient {
     public BotDecision decideNextAction(PageSnapshot snapshot, String goal, List<BotAction> history) {
         log.info("Deciding next action via Google Gemini AI for goal: '{}'. Step history size: {}", goal, history.size());
 
+        String targetUrl = extractUrlFromGoal(goal);
+
+        // Safeguard for Step 0: Ensure initial navigation happens first
+        if (history.isEmpty() || snapshot == null || snapshot.url() == null || snapshot.url().contains("about:blank")) {
+            log.info("Initial navigation safeguard triggered for target URL: {}", targetUrl);
+            return new BotDecision(
+                new BotAction(BotActionType.NAVIGATE, targetUrl, null, "Navigating to target category URL " + targetUrl),
+                false,
+                "Step 1: Initial navigation to target category feed"
+            );
+        }
+
         if (apiKey == null || apiKey.isBlank() || isPlaceholderKey(apiKey)) {
             log.info("Gemini API key is not active. Using automated sequence.");
             return decideMockNextAction(goal, history);
@@ -96,9 +113,9 @@ public class StubLlmClient implements LlmClient {
                                 "required", List.of("type")
                             ),
                             "goalReached", Map.of("type", "BOOLEAN"),
-                            "reasoning", Map.of("type", "STRING")
+                            "rationale", Map.of("type", "STRING")
                         ),
-                        "required", List.of("action", "goalReached", "reasoning")
+                        "required", List.of("action", "goalReached", "rationale")
                     )
                 )
             );
@@ -228,7 +245,7 @@ public class StubLlmClient implements LlmClient {
 
     private String buildPrompt(PageSnapshot snapshot, String goal, List<BotAction> history) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are an AI Web Extraction Agent targeting Macedonian websites (Kajgana.mk, Forum Kajgana).\n");
+        sb.append("You are an active AI Web Crawler Agent targeting Macedonian websites (Kajgana.mk, Forum Kajgana).\n");
         sb.append("Goal: ").append(goal).append("\n\n");
         sb.append("Current Page URL: ").append(snapshot != null ? snapshot.url() : "unknown").append("\n");
         sb.append("Current Page DOM snippet:\n").append(truncateHtml(snapshot != null ? snapshot.domContent() : "")).append("\n\n");
@@ -239,9 +256,11 @@ public class StubLlmClient implements LlmClient {
             sb.append(i + 1).append(". ").append(a.type()).append(" -> ").append(a.target()).append(" (Reason: ").append(a.reasoning()).append(")\n");
         }
 
-        sb.append("\nDecide the next action to take to fulfill the goal. Available action types:\n");
-        sb.append("NAVIGATE, CLICK, TYPE, SCROLL, WAIT, LOGIN, EXTRACT, FINISH.\n");
-        sb.append("Return valid JSON with keys: 'action' (with 'type', 'target', 'value', 'reasoning'), 'goalReached' (boolean), 'reasoning' (string).\n");
+        sb.append("\nINSTRUCTIONS:\n");
+        sb.append("- You are crawling news articles and forum threads.\n");
+        sb.append("- Do NOT set goalReached: true on step 1 or before executing EXTRACT actions on the page.\n");
+        sb.append("- Recommend actions: NAVIGATE, SCROLL, EXTRACT, FINISH.\n");
+        sb.append("- Return valid JSON matching schema with 'action', 'goalReached' (boolean), 'rationale' (string).\n");
 
         return sb.toString();
     }
@@ -260,13 +279,24 @@ public class StubLlmClient implements LlmClient {
             Map<?, ?> firstPart = (Map<?, ?>) parts.get(0);
             String jsonText = (String) firstPart.get("text");
 
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            return mapper.readValue(jsonText, BotDecision.class);
+            // Clean json backticks if model wraps markdown
+            if (jsonText.startsWith("```json")) {
+                jsonText = jsonText.substring(7);
+            }
+            if (jsonText.startsWith("```")) {
+                jsonText = jsonText.substring(3);
+            }
+            if (jsonText.endsWith("```")) {
+                jsonText = jsonText.substring(0, jsonText.length() - 3);
+            }
+            jsonText = jsonText.trim();
+
+            return objectMapper.readValue(jsonText, BotDecision.class);
         } catch (Exception e) {
-            log.error("Failed to parse JSON response from Gemini API", e);
+            log.error("Failed to parse JSON response from Gemini API: {}", e.getMessage(), e);
             return new BotDecision(
-                new BotAction(BotActionType.FINISH, null, null, "Parse error"),
-                true,
+                new BotAction(BotActionType.FINISH, null, null, "Parse error: " + e.getMessage()),
+                false, // Do NOT mark goal reached on parse error, let bot continue
                 "Failed to parse LLM decision"
             );
         }
