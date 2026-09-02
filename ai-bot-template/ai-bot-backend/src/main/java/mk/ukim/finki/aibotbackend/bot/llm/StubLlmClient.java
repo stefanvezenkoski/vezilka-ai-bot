@@ -2,6 +2,8 @@ package mk.ukim.finki.aibotbackend.bot.llm;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import mk.ukim.finki.aibotbackend.bot.browser.PageSnapshot;
 import mk.ukim.finki.aibotbackend.model.enums.BotActionType;
 import org.slf4j.Logger;
@@ -15,6 +17,7 @@ import org.springframework.web.client.RestClient;
 public class StubLlmClient implements LlmClient {
 
     private static final Logger log = LoggerFactory.getLogger(StubLlmClient.class);
+    private static final Pattern URL_PATTERN = Pattern.compile("https?://[^\\s]+");
 
     @Value("${bot.llm-key:${GEMINI_API_KEY:}}")
     private String apiKey;
@@ -66,44 +69,81 @@ public class StubLlmClient implements LlmClient {
         log.info("Deciding next action for goal: '{}'. Step history size: {}", goal, history.size());
 
         if (apiKey == null || apiKey.isBlank() || apiKey.contains("your_gemini_api_key")) {
-            log.warn("Gemini API key is not configured. Executing multi-page pagination crawler sequence.");
-
-            String baseUrl = snapshot != null && snapshot.url() != null && !snapshot.url().isBlank()
-                    ? snapshot.url()
-                    : "https://kajgana.com";
-
-            // Strip existing ?page query parameter if present
-            if (baseUrl.contains("?page=")) {
-                baseUrl = baseUrl.replaceAll("\\?page=\\d+", "");
-            } else if (baseUrl.contains("&page=")) {
-                baseUrl = baseUrl.replaceAll("&page=\\d+", "");
-            }
-
+            String targetUrl = extractUrlFromGoal(goal);
             int stepCount = history.size();
-            int pageNum = stepCount / 2;
 
-            if (stepCount % 2 == 0) {
-                // Even step: Navigate to next page
-                String nextPageUrl = baseUrl.contains("?") ? baseUrl + "&page=" + pageNum : baseUrl + "?page=" + pageNum;
-                return new BotDecision(
-                    new BotAction(BotActionType.NAVIGATE, nextPageUrl, null, "Navigating to feed page " + pageNum),
-                    false,
-                    "Step " + (stepCount + 1) + ": Opening page " + pageNum + " of feed target: " + nextPageUrl
-                );
-            } else {
-                // Odd step: Extract articles from current page
-                if (pageNum >= 5) {
+            log.info("Automation sequence step {} for target URL: {}", stepCount, targetUrl);
+
+            switch (stepCount) {
+                case 0:
                     return new BotDecision(
-                        new BotAction(BotActionType.FINISH, null, null, "Multi-page category extraction completed"),
-                        true,
-                        "Finished crawling all pages of target category"
+                        new BotAction(BotActionType.NAVIGATE, targetUrl, null, "Navigating to target URL " + targetUrl),
+                        false,
+                        "Step 1: Opening target category page"
                     );
-                }
-                return new BotDecision(
-                    new BotAction(BotActionType.EXTRACT, null, null, "Extracting clean articles from feed page " + pageNum),
-                    false,
-                    "Step " + (stepCount + 1) + ": Extracting articles from page " + pageNum
-                );
+                case 1:
+                    return new BotDecision(
+                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting clean articles from main category page"),
+                        false,
+                        "Step 2: Extracting articles from page 1"
+                    );
+                case 2:
+                    return new BotDecision(
+                        new BotAction(BotActionType.SCROLL, null, null, "Scrolling down category page"),
+                        false,
+                        "Step 3: Scrolling down to reveal more articles"
+                    );
+                case 3:
+                    return new BotDecision(
+                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting second batch of clean articles"),
+                        false,
+                        "Step 4: Extracting articles post-scroll"
+                    );
+                case 4:
+                    String page1Url = buildPagedUrl(targetUrl, 1);
+                    return new BotDecision(
+                        new BotAction(BotActionType.NAVIGATE, page1Url, null, "Navigating to feed page 1"),
+                        false,
+                        "Step 5: Opening page 1 of category feed: " + page1Url
+                    );
+                case 5:
+                    return new BotDecision(
+                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 1"),
+                        false,
+                        "Step 6: Extracting articles from page 1"
+                    );
+                case 6:
+                    String page2Url = buildPagedUrl(targetUrl, 2);
+                    return new BotDecision(
+                        new BotAction(BotActionType.NAVIGATE, page2Url, null, "Navigating to feed page 2"),
+                        false,
+                        "Step 7: Opening page 2 of category feed: " + page2Url
+                    );
+                case 7:
+                    return new BotDecision(
+                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 2"),
+                        false,
+                        "Step 8: Extracting articles from page 2"
+                    );
+                case 8:
+                    String page3Url = buildPagedUrl(targetUrl, 3);
+                    return new BotDecision(
+                        new BotAction(BotActionType.NAVIGATE, page3Url, null, "Navigating to feed page 3"),
+                        false,
+                        "Step 9: Opening page 3 of category feed: " + page3Url
+                    );
+                case 9:
+                    return new BotDecision(
+                        new BotAction(BotActionType.EXTRACT, null, null, "Extracting articles from feed page 3"),
+                        false,
+                        "Step 10: Extracting articles from page 3"
+                    );
+                default:
+                    return new BotDecision(
+                        new BotAction(BotActionType.FINISH, null, null, "Category feed extraction completed successfully"),
+                        true,
+                        "Finished multi-page extraction for target category"
+                    );
             }
         }
 
@@ -153,6 +193,26 @@ public class StubLlmClient implements LlmClient {
                 "API request failed, finishing gracefully."
             );
         }
+    }
+
+    private String extractUrlFromGoal(String goal) {
+        if (goal == null) return "https://kajgana.com";
+        Matcher matcher = URL_PATTERN.matcher(goal);
+        if (matcher.find()) {
+            String url = matcher.group(0);
+            return url.replaceAll("[.,;)]$", "");
+        }
+        return "https://kajgana.com";
+    }
+
+    private String buildPagedUrl(String baseUrl, int page) {
+        if (baseUrl.contains("?page=")) {
+            return baseUrl.replaceAll("\\?page=\\d+", "?page=" + page);
+        }
+        if (baseUrl.contains("&page=")) {
+            return baseUrl.replaceAll("&page=\\d+", "&page=" + page);
+        }
+        return baseUrl.contains("?") ? baseUrl + "&page=" + page : baseUrl + "?page=" + page;
     }
 
     private String buildPrompt(PageSnapshot snapshot, String goal, List<BotAction> history) {
